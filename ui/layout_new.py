@@ -2268,27 +2268,62 @@ def create_calibration_tab_content(lang: str) -> dict:
                     ("BW (Black & White)", "BW (Black & White)"),
                     ("4-Color (1024 colors)", "4-Color"),
                     ("6-Color (Smart 1296)", "6-Color (Smart 1296)"),
-                    ("8-Color Max", "8-Color Max")
+                    ("8-Color Max", "8-Color Max"),
+                    ("单耗材阶梯卡 (K/S Calibration)", "K/S Step Card")
                 ],
                 value="4-Color",
                 label=I18n.get('cal_color_mode', lang)
             )
+            
+            # Standard calibration parameters (visible for regular modes)
+            with gr.Group(visible=True) as standard_params_group:
+                components['slider_cal_block_size'] = gr.Slider(
+                    3, 10, 5, step=1,
+                    label=I18n.get('cal_block_size', lang)
+                )
+                    
+                components['slider_cal_gap'] = gr.Slider(
+                    0.4, 2.0, 0.82, step=0.02,
+                    label=I18n.get('cal_gap', lang)
+                )
+                    
+                components['dropdown_cal_backing'] = gr.Dropdown(
+                    choices=["White", "Cyan", "Magenta", "Yellow", "Red", "Blue"],
+                    value="White",
+                    label=I18n.get('cal_backing', lang)
+                )
+            
+            # K/S step card parameters (hidden by default)
+            with gr.Group(visible=False) as ks_params_group:
+                components['slider_ks_layer_height'] = gr.Slider(
+                    minimum=0.04,
+                    maximum=0.20,
+                    value=0.08,
+                    step=0.01,
+                    label="层高 | Layer Height (mm)",
+                    info="必须与实际打印设置一致 | Must match your print settings"
+                )
                 
-            components['slider_cal_block_size'] = gr.Slider(
-                3, 10, 5, step=1,
-                label=I18n.get('cal_block_size', lang)
-            )
+                components['slider_ks_num_steps'] = gr.Slider(
+                    minimum=3,
+                    maximum=10,
+                    value=5,
+                    step=1,
+                    label="阶梯数量 | Number of Steps",
+                    info="测试 1 到 N 层 | Test 1 to N layers"
+                )
                 
-            components['slider_cal_gap'] = gr.Slider(
-                0.4, 2.0, 0.82, step=0.02,
-                label=I18n.get('cal_gap', lang)
-            )
-                
-            components['dropdown_cal_backing'] = gr.Dropdown(
-                choices=["White", "Cyan", "Magenta", "Yellow", "Red", "Blue"],
-                value="White",
-                label=I18n.get('cal_backing', lang)
-            )
+                components['slider_ks_base_thickness'] = gr.Slider(
+                    minimum=0.4,
+                    maximum=1.2,
+                    value=0.6,
+                    step=0.1,
+                    label="底座厚度 | Base Thickness (mm)",
+                    info="黑白底座厚度 | Black/White backing thickness"
+                )
+            
+            components['group_standard_params'] = standard_params_group
+            components['group_ks_params'] = ks_params_group
                 
             components['btn_cal_generate_btn'] = gr.Button(
                 I18n.get('cal_generate_btn', lang),
@@ -2314,8 +2349,12 @@ def create_calibration_tab_content(lang: str) -> dict:
             )
     
     # Event binding - Call different generator based on mode
-    def generate_board_wrapper(color_mode, block_size, gap, backing):
+    def generate_board_wrapper(color_mode, block_size, gap, backing, ks_layer_height, ks_num_steps, ks_base_thickness):
         """Wrapper function to call appropriate generator based on mode"""
+        if color_mode == "K/S Step Card":
+            # Call K/S step card generator (3MF unified output)
+            from core.calibration import generate_ks_step_card_3mf
+            return generate_ks_step_card_3mf(ks_layer_height, int(ks_num_steps), ks_base_thickness)
         if color_mode == "8-Color Max":
             return generate_8color_batch_zip()
         if "6-Color" in color_mode:
@@ -2330,13 +2369,34 @@ def create_calibration_tab_content(lang: str) -> dict:
             # Default to RYBW palette
             return generate_calibration_board("RYBW", block_size, gap, backing)
     
+    # Toggle parameter visibility based on mode selection
+    def toggle_cal_params(color_mode):
+        """Show/hide parameters based on selected mode"""
+        is_ks_mode = (color_mode == "K/S Step Card")
+        return [
+            gr.update(visible=not is_ks_mode),  # standard_params_group
+            gr.update(visible=is_ks_mode)       # ks_params_group
+        ]
+    
+    components['radio_cal_color_mode'].change(
+        fn=toggle_cal_params,
+        inputs=[components['radio_cal_color_mode']],
+        outputs=[
+            components['group_standard_params'],
+            components['group_ks_params']
+        ]
+    )
+    
     cal_event = components['btn_cal_generate_btn'].click(
             generate_board_wrapper,
             inputs=[
                 components['radio_cal_color_mode'],
                 components['slider_cal_block_size'],
                 components['slider_cal_gap'],
-                components['dropdown_cal_backing']
+                components['dropdown_cal_backing'],
+                components['slider_ks_layer_height'],
+                components['slider_ks_num_steps'],
+                components['slider_ks_base_thickness']
             ],
             outputs=[
                 components['file_cal_download'],
@@ -2354,6 +2414,7 @@ def create_extractor_tab_content(lang: str) -> dict:
     """Build color extractor tab UI and events. Returns component dict."""
     components = {}
     ext_state_img = gr.State(None)
+    ext_state_original_img = gr.State(None)  # Store original image for K/S extraction
     ext_state_pts = gr.State([])
     ext_curr_coord = gr.State(None)
     default_mode = "4-Color"
@@ -2370,7 +2431,8 @@ def create_extractor_tab_content(lang: str) -> dict:
                     ("BW (Black & White)", "BW (Black & White)"),
                     ("4-Color (1024 colors)", "4-Color"),
                     ("6-Color (Smart 1296)", "6-Color (Smart 1296)"),
-                    ("8-Color Max", "8-Color Max")
+                    ("8-Color Max", "8-Color Max"),
+                    ("K/S 参数提取 (K/S Parameter)", "K/S Parameter")
                 ],
                 value="4-Color",
                 label=I18n.get('ext_color_mode', lang)
@@ -2390,45 +2452,90 @@ def create_extractor_tab_content(lang: str) -> dict:
                     I18n.get('ext_reset_btn', lang)
                 )
                 
-            components['md_ext_correction_section'] = gr.Markdown(
-                I18n.get('ext_correction_section', lang)
-            )
-                
-            with gr.Row():
-                components['checkbox_ext_wb'] = gr.Checkbox(
-                    label=I18n.get('ext_wb', lang),
-                    value=False
+            # Standard extraction parameters (visible for regular modes)
+            with gr.Group(visible=True) as standard_ext_params_group:
+                components['md_ext_correction_section'] = gr.Markdown(
+                    I18n.get('ext_correction_section', lang)
                 )
-                components['checkbox_ext_vignette'] = gr.Checkbox(
-                    label=I18n.get('ext_vignette', lang),
-                    value=False
+                    
+                with gr.Row():
+                    components['checkbox_ext_wb'] = gr.Checkbox(
+                        label=I18n.get('ext_wb', lang),
+                        value=False
+                    )
+                    components['checkbox_ext_vignette'] = gr.Checkbox(
+                        label=I18n.get('ext_vignette', lang),
+                        value=False
+                    )
+                    
+                components['slider_ext_zoom'] = gr.Slider(
+                    0.8, 1.2, 1.0, step=0.005,
+                    label=I18n.get('ext_zoom', lang)
+                )
+                    
+                components['slider_ext_distortion'] = gr.Slider(
+                    -0.2, 0.2, 0.0, step=0.01,
+                    label=I18n.get('ext_distortion', lang)
+                )
+                    
+                components['slider_ext_offset_x'] = gr.Slider(
+                    -30, 30, 0, step=1,
+                    label=I18n.get('ext_offset_x', lang)
+                )
+                    
+                components['slider_ext_offset_y'] = gr.Slider(
+                    -30, 30, 0, step=1,
+                    label=I18n.get('ext_offset_y', lang)
                 )
                 
-            components['slider_ext_zoom'] = gr.Slider(
-                0.8, 1.2, 1.0, step=0.005,
-                label=I18n.get('ext_zoom', lang)
-            )
-                
-            components['slider_ext_distortion'] = gr.Slider(
-                -0.2, 0.2, 0.0, step=0.01,
-                label=I18n.get('ext_distortion', lang)
-            )
-                
-            components['slider_ext_offset_x'] = gr.Slider(
-                -30, 30, 0, step=1,
-                label=I18n.get('ext_offset_x', lang)
-            )
-                
-            components['slider_ext_offset_y'] = gr.Slider(
-                -30, 30, 0, step=1,
-                label=I18n.get('ext_offset_y', lang)
-            )
+                components['radio_ext_page'] = gr.Radio(
+                    choices=["Page 1", "Page 2"],
+                    value="Page 1",
+                    label="8-Color Page"
+                )
             
-            components['radio_ext_page'] = gr.Radio(
-                choices=["Page 1", "Page 2"],
-                value="Page 1",
-                label="8-Color Page"
-            )
+            # K/S extraction parameters (hidden by default)
+            with gr.Group(visible=False) as ks_ext_params_group:
+                gr.Markdown("### 📸 K/S 参数提取设置")
+                
+                components['slider_ks_ext_layer_height'] = gr.Slider(
+                    minimum=0.04,
+                    maximum=0.20,
+                    value=0.08,
+                    step=0.01,
+                    label="层高 | Layer Height (mm)",
+                    info="必须与打印设置一致 | Must match print settings"
+                )
+                
+                components['slider_ks_ext_num_steps'] = gr.Slider(
+                    minimum=3,
+                    maximum=10,
+                    value=5,
+                    step=1,
+                    label="阶梯数量 | Number of Steps",
+                    info="与打印的阶梯卡一致 | Match your printed card"
+                )
+                
+                components['checkbox_ks_white_balance'] = gr.Checkbox(
+                    label="🎨 启用白平衡 | Enable White Balance",
+                    value=False,
+                    info="⚠️ 如果颜色失真，请关闭此选项 | Turn off if colors are distorted"
+                )
+                
+                gr.Markdown(
+                    """
+                    **📋 操作步骤：**
+                    1. 上传打印好的阶梯卡照片
+                    2. 点击 4 个角点选择 A4 纸边界（绿色）
+                    3. 点击 4 个角点选择阶梯卡边界（红色）
+                    4. 调整层高和阶梯数
+                    5. ⚠️ 如果检测结果颜色失真，关闭白平衡
+                    6. 点击提取按钮计算 K/S 参数
+                    """
+                )
+            
+            components['group_standard_ext_params'] = standard_ext_params_group
+            components['group_ks_ext_params'] = ks_ext_params_group
                 
             components['btn_ext_extract_btn'] = gr.Button(
                 I18n.get('ext_extract_btn', lang),
@@ -2453,57 +2560,121 @@ def create_extractor_tab_content(lang: str) -> dict:
                 show_label=False,
                 interactive=True
             )
-                
-            with gr.Row():
-                with gr.Column():
-                    components['md_ext_sampling'] = gr.Markdown(
-                        I18n.get('ext_sampling', lang)
-                    )
-                    ext_warp_view = gr.Image(show_label=False)
+            
+            # Standard extraction results (visible for regular modes)
+            with gr.Group(visible=True) as standard_ext_results_group:
+                with gr.Row():
+                    with gr.Column():
+                        components['md_ext_sampling'] = gr.Markdown(
+                            I18n.get('ext_sampling', lang)
+                        )
+                        ext_warp_view = gr.Image(show_label=False)
+                        
+                    with gr.Column():
+                        components['md_ext_reference'] = gr.Markdown(
+                            I18n.get('ext_reference', lang)
+                        )
+                        ext_ref_view = gr.Image(
+                            show_label=False,
+                            value=ref_img,
+                            interactive=False
+                        )
                     
-                with gr.Column():
-                    components['md_ext_reference'] = gr.Markdown(
-                        I18n.get('ext_reference', lang)
-                    )
-                    ext_ref_view = gr.Image(
-                        show_label=False,
-                        value=ref_img,
-                        interactive=False
-                    )
+                with gr.Row():
+                    with gr.Column():
+                        components['md_ext_result'] = gr.Markdown(
+                            I18n.get('ext_result', lang)
+                        )
+                        ext_lut_view = gr.Image(
+                            show_label=False,
+                            interactive=True
+                        )
+                        
+                    with gr.Column():
+                        components['md_ext_manual_fix'] = gr.Markdown(
+                            I18n.get('ext_manual_fix', lang)
+                        )
+                        ext_probe_html = gr.HTML(I18n.get('ext_click_cell', lang))
+                            
+                        ext_picker = gr.ColorPicker(
+                            label=I18n.get('ext_override', lang),
+                            value="#FF0000"
+                        )
+                            
+                        components['btn_ext_apply_btn'] = gr.Button(
+                            I18n.get('ext_apply_btn', lang)
+                        )
+                            
+                        components['file_ext_download_npy'] = gr.File(
+                            label=I18n.get('ext_download_npy', lang)
+                        )
+            
+            # K/S extraction results (hidden by default)
+            with gr.Group(visible=False) as ks_ext_results_group:
+                gr.Markdown("### 📊 K/S 参数计算结果")
                 
-            with gr.Row():
-                with gr.Column():
-                    components['md_ext_result'] = gr.Markdown(
-                        I18n.get('ext_result', lang)
-                    )
-                    ext_lut_view = gr.Image(
-                        show_label=False,
-                        interactive=True
+                with gr.Row():
+                    components['img_ks_fitting_plot'] = gr.Image(
+                        label="拟合曲线 | Fitting Curves",
+                        show_label=True,
+                        height=400
                     )
                     
-                with gr.Column():
-                    components['md_ext_manual_fix'] = gr.Markdown(
-                        I18n.get('ext_manual_fix', lang)
+                    components['img_ks_detection'] = gr.Image(
+                        label="检测结果 | Detection Result",
+                        show_label=True,
+                        height=400
                     )
-                    ext_probe_html = gr.HTML(I18n.get('ext_click_cell', lang))
-                        
-                    ext_picker = gr.ColorPicker(
-                        label=I18n.get('ext_override', lang),
-                        value="#FF0000"
+                
+                components['json_ks_results'] = gr.JSON(
+                    label="📋 K/S 参数 | K/S Parameters"
+                )
+                
+                with gr.Row():
+                    components['textbox_ks_filament_name'] = gr.Textbox(
+                        label="耗材名称 | Filament Name",
+                        placeholder="例如: Bambu Lab PLA Cyan"
                     )
-                        
-                    components['btn_ext_apply_btn'] = gr.Button(
-                        I18n.get('ext_apply_btn', lang)
+                    
+                    components['colorpicker_ks_filament_color'] = gr.ColorPicker(
+                        label="显示颜色 | Display Color",
+                        value="#00FFFF"
                     )
-                        
-                    components['file_ext_download_npy'] = gr.File(
-                        label=I18n.get('ext_download_npy', lang)
+                    
+                    components['btn_ks_save_to_db'] = gr.Button(
+                        "💾 保存到数据库 | Save to Database",
+                        variant="secondary"
                     )
+            
+            components['group_standard_ext_results'] = standard_ext_results_group
+            components['group_ks_ext_results'] = ks_ext_results_group
+    
+    # Toggle parameter visibility based on mode selection
+    def toggle_ext_params(color_mode):
+        """Show/hide parameters based on selected mode"""
+        is_ks_mode = (color_mode == "K/S Parameter")
+        return [
+            gr.update(visible=not is_ks_mode),  # standard_ext_params_group
+            gr.update(visible=is_ks_mode),      # ks_ext_params_group
+            gr.update(visible=not is_ks_mode),  # standard_ext_results_group
+            gr.update(visible=is_ks_mode)       # ks_ext_results_group
+        ]
+    
+    components['radio_ext_color_mode'].change(
+        fn=toggle_ext_params,
+        inputs=[components['radio_ext_color_mode']],
+        outputs=[
+            components['group_standard_ext_params'],
+            components['group_ks_ext_params'],
+            components['group_standard_ext_results'],
+            components['group_ks_ext_results']
+        ]
+    )
     
     ext_img_in.upload(
             on_extractor_upload,
             [ext_img_in, components['radio_ext_color_mode']],
-            [ext_state_img, ext_work_img, ext_state_pts, ext_curr_coord, ext_hint]
+            [ext_state_img, ext_state_original_img, ext_state_pts, ext_curr_coord, ext_hint]
     )
     
     components['radio_ext_color_mode'].change(
@@ -2526,8 +2697,8 @@ def create_extractor_tab_content(lang: str) -> dict:
     
     ext_work_img.select(
             on_extractor_click,
-            [ext_state_img, ext_state_pts, components['radio_ext_color_mode']],
-            [ext_work_img, ext_state_pts, ext_hint]
+            [ext_state_img, ext_state_original_img, ext_state_pts, components['radio_ext_color_mode']],
+            [ext_state_img, ext_state_original_img, ext_work_img, ext_state_pts, ext_hint]
     )
     
     components['btn_ext_reset_btn'].click(
@@ -2536,8 +2707,264 @@ def create_extractor_tab_content(lang: str) -> dict:
             [ext_work_img, ext_state_pts, ext_hint]
     )
     
+    # K/S extraction wrapper
+    def run_ks_extraction_wrapper(original_img, pts, layer_height, num_steps, enable_white_balance):
+        """Wrapper for K/S parameter extraction using ChromaStack's original code"""
+        if original_img is None:
+            return None, None, {}, "❌ 请先上传照片"
+        
+        if not pts or len(pts) < 8:
+            return None, None, {}, "❌ 请先选择 A4 纸和阶梯卡的角点（共需要 8 个点）"
+        
+        # Split points: first 4 for A4, last 4 for chip
+        a4_corners = pts[:4]
+        chip_corners = pts[4:8]
+        
+        try:
+            import cv2
+            import numpy as np
+            import pandas as pd
+            from scipy.optimize import minimize
+            import matplotlib
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+            import os
+            import sys
+            
+            # Add ChromaStack path to sys.path
+            chromastack_path = os.path.join(os.getcwd(), "ChromaStack-main", "ChromaStack-main", "filament_cali")
+            if chromastack_path not in sys.path:
+                sys.path.insert(0, chromastack_path)
+            
+            # Import ChromaStack functions
+            from KS_calibration import (
+                apply_perspective_transform,
+                auto_white_balance_by_paper,
+                km_reflectance,
+                fit_km_parameters
+            )
+            
+            # Constants from ChromaStack
+            A4_WIDTH = 1414
+            A4_HEIGHT = 1000
+            CHIP_W, CHIP_H = 400, 500
+            BACKING_REFLECTANCE_WHITE = 0.94
+            BACKING_REFLECTANCE_BLACK = 0.00
+            
+            # Read original image
+            if isinstance(original_img, str):
+                raw_img = cv2.imread(original_img)
+            else:
+                raw_img = original_img
+            
+            print(f"[K/S] Using ChromaStack's original algorithm")
+            print(f"[K/S] A4 corners: {a4_corners}")
+            print(f"[K/S] Chip corners (relative to corrected A4): {chip_corners}")
+            
+            # Step 1: A4 correction (using ChromaStack's function)
+            pts_a4 = np.float32(a4_corners)
+            img_a4 = apply_perspective_transform(raw_img, pts_a4, A4_WIDTH, A4_HEIGHT)
+            
+            # Apply white balance if enabled (using ChromaStack's function)
+            if enable_white_balance:
+                img_calibrated = auto_white_balance_by_paper(img_a4)
+            else:
+                img_calibrated = img_a4
+            
+            # Step 2: Chip extraction (using ChromaStack's function)
+            # IMPORTANT: chip_corners are relative to img_calibrated, not raw_img
+            pts_chip = np.float32(chip_corners)
+            img_chip = apply_perspective_transform(img_calibrated, pts_chip, CHIP_W, CHIP_H)
+            
+            # Step 3: Sample colors (ChromaStack's logic)
+            rows = int(num_steps)
+            cols = 2
+            dy = CHIP_H // rows
+            dx = CHIP_W // cols
+            
+            data = []
+            debug_view = img_chip.copy()
+            
+            for r in range(rows):
+                x_left = int(0.5 * dx)
+                x_right = int(1.5 * dx)
+                y_center = int((r + 0.5) * dy)
+                
+                patch_size = 20
+                
+                roi_0 = img_chip[y_center-patch_size:y_center+patch_size, x_left-patch_size:x_left+patch_size]
+                rgb_0 = np.mean(roi_0, axis=(0,1))[::-1]
+                
+                roi_w = img_chip[y_center-patch_size:y_center+patch_size, x_right-patch_size:x_right+patch_size]
+                rgb_w = np.mean(roi_w, axis=(0,1))[::-1]
+                
+                R0_linear = (rgb_0 / 255.0) ** 2.2
+                Rw_linear = (rgb_w / 255.0) ** 2.2
+                
+                layer_idx = rows - r
+                
+                data.append({
+                    'Layer_Index': layer_idx,
+                    'R0_r': R0_linear[0], 'R0_g': R0_linear[1], 'R0_b': R0_linear[2],
+                    'Rw_r': Rw_linear[0], 'Rw_g': Rw_linear[1], 'Rw_b': Rw_linear[2]
+                })
+                
+                cv2.circle(debug_view, (x_left, y_center), 5, (0,255,0), -1)
+                cv2.circle(debug_view, (x_right, y_center), 5, (0,0,255), -1)
+            
+            os.makedirs("output/ks_engine/debug", exist_ok=True)
+            cv2.imwrite("output/ks_engine/debug/sampling_points.jpg", debug_view)
+            
+            df = pd.DataFrame(data).sort_values('Layer_Index')
+            
+            # Step 4: Calculate K-M parameters (using ChromaStack's function)
+            thicknesses = df['Layer_Index'].values * layer_height
+            
+            results = {}
+            channels = ['r', 'g', 'b']
+            
+            fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+            
+            status_lines = []
+            status_lines.append("🚀 Kubelka-Munk 参数拟合 (ChromaStack 算法)")
+            status_lines.append(f"   厚度范围: {thicknesses[0]:.2f}mm - {thicknesses[-1]:.2f}mm")
+            status_lines.append("")
+            
+            for i, ch in enumerate(channels):
+                R0_meas = df[f'R0_{ch}'].values
+                Rw_meas = df[f'Rw_{ch}'].values
+                
+                (best_K, best_S), error = fit_km_parameters(thicknesses, R0_meas, Rw_meas)
+                results[ch] = {'K': best_K, 'S': best_S}
+                
+                status_lines.append(f"🎨 {ch.upper()} 通道: K={best_K:.4f}, S={best_S:.4f} (误差: {error:.5f})")
+                
+                ax = axes[i]
+                ax.scatter(thicknesses, R0_meas, color='black', label='Measured (Black Base)', s=50)
+                ax.scatter(thicknesses, Rw_meas, color='gray', marker='s', label='Measured (White Base)', s=50)
+                
+                h_smooth = np.linspace(0, thicknesses[-1] + 0.2, 50)
+                R0_smooth = km_reflectance(best_K, best_S, h_smooth, BACKING_REFLECTANCE_BLACK)
+                Rw_smooth = km_reflectance(best_K, best_S, h_smooth, BACKING_REFLECTANCE_WHITE)
+                
+                plot_color = 'red' if ch=='r' else 'green' if ch=='g' else 'blue'
+                ax.plot(h_smooth, R0_smooth, linestyle='--', color=plot_color, label='K-M Model (Black)', linewidth=2)
+                ax.plot(h_smooth, Rw_smooth, linestyle='-', color=plot_color, alpha=0.5, label='K-M Model (White)', linewidth=2)
+                
+                ax.set_title(f"Channel {ch.upper()}\nK={best_K:.3f}, S={best_S:.3f}", fontsize=12, fontweight='bold')
+                ax.set_xlabel("Thickness (mm)", fontsize=10)
+                ax.set_ylabel("Reflectance", fontsize=10)
+                ax.grid(True, alpha=0.3)
+                if i == 0:
+                    ax.legend(fontsize=8)
+            
+            plt.tight_layout()
+            plot_path = "output/ks_engine/km_fitting_result.png"
+            plt.savefig(plot_path, dpi=150)
+            plt.close()
+            
+            # Build K/S params dict
+            ks_params = {
+                'K': [results['r']['K'], results['g']['K'], results['b']['K']],
+                'S': [results['r']['S'], results['g']['S'], results['b']['S']]
+            }
+            
+            status_lines.append("")
+            status_lines.append("📋 JSON 参数 (可直接填入 my_filament.json):")
+            status_lines.append(f'  "FILAMENT_K": [{ks_params["K"][0]:.4f}, {ks_params["K"][1]:.4f}, {ks_params["K"][2]:.4f}]')
+            status_lines.append(f'  "FILAMENT_S": [{ks_params["S"][0]:.4f}, {ks_params["S"][1]:.4f}, {ks_params["S"][2]:.4f}]')
+            
+            avg_S = np.mean(ks_params['S'])
+            avg_K = np.mean(ks_params['K'])
+            
+            status_lines.append("")
+            status_lines.append("💡 材料特性:")
+            if avg_S > 10:
+                status_lines.append("   [高遮盖力] 类似牛奶或浓缩颜料")
+            elif avg_S < 1:
+                status_lines.append("   [低遮盖力] 类似清漆或彩色玻璃")
+            else:
+                status_lines.append("   [半透明] 类似玉石或雾状塑料")
+            
+            if avg_K > 2:
+                status_lines.append("   [深色] 吸光能力强")
+            elif avg_K < 0.1:
+                status_lines.append("   [浅色/透明] 吸光能力弱")
+            
+            status_message = "\n".join(status_lines)
+            
+            # Create detection image
+            detection_img = raw_img.copy()
+            cv2.polylines(detection_img, [pts_a4.astype(int)], True, (0, 255, 0), 3)
+            detection_path = "output/ks_engine/debug/detection_result.jpg"
+            cv2.imwrite(detection_path, detection_img)
+            
+            return plot_path, detection_path, ks_params, status_message
+            
+        except Exception as e:
+            import traceback
+            error_msg = f"❌ K/S 参数提取失败: {str(e)}\n\n"
+            error_msg += traceback.format_exc()
+            return None, None, {}, error_msg
+    
+    # K/S save to database
+    def save_ks_to_db_wrapper(name, color, ks_params):
+        """Save K/S parameters to filament database"""
+        try:
+            if not name:
+                return "❌ 请输入耗材名称"
+            
+            if not ks_params or 'K' not in ks_params or 'S' not in ks_params:
+                return "❌ 请先计算 K/S 参数"
+            
+            import json
+            
+            # Read existing database
+            db_path = "my_filament.json"
+            if os.path.exists(db_path):
+                with open(db_path, 'r', encoding='utf-8') as f:
+                    db = json.load(f)
+            else:
+                db = {"filaments": []}
+            
+            # Add new filament
+            new_filament = {
+                "name": name,
+                "color": color,
+                "K": ks_params['K'],
+                "S": ks_params['S']
+            }
+            
+            # Check if exists
+            existing_idx = None
+            for i, fil in enumerate(db.get("filaments", [])):
+                if fil.get("name") == name:
+                    existing_idx = i
+                    break
+            
+            if existing_idx is not None:
+                db["filaments"][existing_idx] = new_filament
+                action = "更新"
+            else:
+                if "filaments" not in db:
+                    db["filaments"] = []
+                db["filaments"].append(new_filament)
+                action = "添加"
+            
+            # Save database
+            with open(db_path, 'w', encoding='utf-8') as f:
+                json.dump(db, f, indent=2, ensure_ascii=False)
+            
+            return f"✅ 成功{action}耗材: {name}\n💾 已保存到 {db_path}"
+            
+        except Exception as e:
+            import traceback
+            error_msg = f"❌ 保存失败: {str(e)}\n\n"
+            error_msg += traceback.format_exc()
+            return error_msg
+    
     extract_inputs = [
-            ext_state_img, ext_state_pts,
+            ext_state_original_img, ext_state_pts,
             components['slider_ext_offset_x'], components['slider_ext_offset_y'],
             components['slider_ext_zoom'], components['slider_ext_distortion'],
             components['checkbox_ext_wb'], components['checkbox_ext_vignette'],
@@ -2549,8 +2976,62 @@ def create_extractor_tab_content(lang: str) -> dict:
             components['file_ext_download_npy'], components['textbox_ext_status']
     ]
     
-    ext_event = components['btn_ext_extract_btn'].click(run_extraction_wrapper, extract_inputs, extract_outputs)
+    # Conditional extraction based on mode
+    def extract_wrapper(img, pts, offset_x, offset_y, zoom, distortion, wb, vignette, color_mode, page):
+        """Wrapper to route to correct extraction function"""
+        if color_mode == "K/S Parameter":
+            # K/S extraction - needs different output routing
+            # We'll handle this separately with a dedicated button click
+            return None, None, None, "⚠️ K/S 模式请使用专用的提取按钮"
+        else:
+            # Standard LUT extraction
+            return run_extraction_wrapper(
+                img, pts, offset_x, offset_y, zoom, distortion, wb, vignette, color_mode, page
+            )
+    
+    # Extraction button - routes to different handlers based on mode
+    def unified_extract_handler(img, pts, offset_x, offset_y, zoom, distortion, wb, vignette, color_mode, page, layer_height, num_steps, enable_white_balance):
+        """Unified extraction handler that routes based on mode"""
+        if color_mode == "K/S Parameter":
+            # K/S extraction
+            fitting, detection, ks_params, status = run_ks_extraction_wrapper(
+                img, pts, layer_height, num_steps, enable_white_balance
+            )
+            # Return tuple: (warp_view, lut_view, download_file, status, fitting_plot, detection_img, ks_json)
+            return None, None, None, status, fitting, detection, ks_params
+        else:
+            # Standard LUT extraction
+            warp, lut, download, status = run_extraction_wrapper(
+                img, pts, offset_x, offset_y, zoom, distortion, wb, vignette, color_mode, page
+            )
+            # Return tuple with None for K/S outputs
+            return warp, lut, download, status, None, None, {}
+    
+    ext_event = components['btn_ext_extract_btn'].click(
+        fn=unified_extract_handler,
+        inputs=extract_inputs + [
+            components['slider_ks_ext_layer_height'],
+            components['slider_ks_ext_num_steps'],
+            components['checkbox_ks_white_balance']
+        ],
+        outputs=extract_outputs + [
+            components['img_ks_fitting_plot'],
+            components['img_ks_detection'],
+            components['json_ks_results']
+        ]
+    )
     components['ext_event'] = ext_event
+    
+    # K/S save to database button
+    components['btn_ks_save_to_db'].click(
+        fn=save_ks_to_db_wrapper,
+        inputs=[
+            components['textbox_ks_filament_name'],
+            components['colorpicker_ks_filament_color'],
+            components['json_ks_results']
+        ],
+        outputs=[components['textbox_ext_status']]
+    )
 
     components['btn_ext_merge_btn'].click(
             merge_8color_data,

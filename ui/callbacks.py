@@ -53,6 +53,9 @@ def on_lut_upload_save(uploaded_file):
 
 def get_first_hint(mode):
     """Get first corner point hint based on mode"""
+    if mode == "K/S Parameter":
+        return "#### 👉 步骤 1/2: 点击 A4 纸 **左上角 / Top-Left**"
+    
     conf = ColorSystem.get(mode)
     label_zh = conf['corner_labels'][0]
     label_en = conf.get('corner_labels_en', conf['corner_labels'])[0]
@@ -61,6 +64,21 @@ def get_first_hint(mode):
 
 def get_next_hint(mode, pts_count):
     """Get next corner point hint based on mode"""
+    if mode == "K/S Parameter":
+        # K/S mode needs 8 points total (4 for A4, 4 for chip)
+        if pts_count < 4:
+            labels = ["左上角 / Top-Left", "右上角 / Top-Right", "右下角 / Bottom-Right", "左下角 / Bottom-Left"]
+            return f"#### 👉 步骤 1/2 (A4 纸): 点击 **{labels[pts_count]}**"
+        elif pts_count == 4:
+            return "#### ✅ A4 纸完成！图像已自动校正\n#### 👉 步骤 2/2: 在校正后的图像上点击阶梯卡 **左上角 / Top-Left**\n⚠️ 确保上方是厚端(5层)，下方是薄端(1层)"
+        elif pts_count < 8:
+            labels = ["左上角 / Top-Left", "右上角 / Top-Right", "右下角 / Bottom-Right", "左下角 / Bottom-Left"]
+            chip_idx = pts_count - 4
+            return f"#### 👉 步骤 2/2 (阶梯卡): 点击 **{labels[chip_idx]}**"
+        else:
+            return "#### ✅ 定位完成！可以开始提取 K/S 参数！"
+    
+    # Standard modes
     conf = ColorSystem.get(mode)
     if pts_count >= 4:
         return "#### ✅ Positioning complete! Ready to extract!"
@@ -72,6 +90,7 @@ def get_next_hint(mode, pts_count):
 def on_extractor_upload(i, mode):
     """Handle image upload"""
     hint = get_first_hint(mode)
+    # Return: state_img, original_img, pts, curr_coord, hint
     return i, i, [], None, hint
 
 
@@ -90,15 +109,134 @@ def on_extractor_rotate(i, mode):
     return r, r, [], get_first_hint(mode)
 
 
-def on_extractor_click(img, pts, mode, evt: gr.SelectData):
-    """Set corner point by clicking image"""
+def on_extractor_click(img, original_img, pts, mode, evt: gr.SelectData):
+    """Set corner point by clicking image
+    
+    Returns:
+        tuple: (state_img, original_img, work_img, pts, hint)
+            - state_img: The base image for next click (updated when switching to corrected A4)
+            - original_img: Always keeps the original uploaded image (for K/S extraction)
+            - work_img: The display image with markers
+            - pts: Updated points list
+            - hint: Hint text for next step
+    """
     from core.extractor import draw_corner_points
-    if len(pts) >= 4:
-        return img, pts, "#### ✅ 定位完成 Complete!"
+    
+    # K/S mode needs 8 points, standard modes need 4
+    max_points = 8 if mode == "K/S Parameter" else 4
+    
+    if len(pts) >= max_points:
+        return img, original_img, img, pts, get_next_hint(mode, len(pts))
+    
     n = pts + [[evt.index[0], evt.index[1]]]
-    vis = draw_corner_points(img, n, mode)
-    hint = get_next_hint(mode, len(n))
-    return vis, n, hint
+    
+    # For K/S mode, handle two-step process
+    if mode == "K/S Parameter":
+        if len(n) <= 4:
+            # Step 1: Selecting A4 corners on original image
+            vis = draw_ks_corner_points(img, n, mode='a4')
+            hint = get_next_hint(mode, len(n))
+            
+            # If we just completed A4 selection (4 points), show corrected A4 image
+            if len(n) == 4:
+                try:
+                    import cv2
+                    import numpy as np
+                    from core.ks_engine.calibration_ks import apply_perspective_transform, auto_white_balance_by_paper
+                    
+                    # Read original image
+                    img_raw = cv2.imread(original_img) if isinstance(original_img, str) else original_img
+                    
+                    # Apply perspective transform to A4
+                    a4_pts = np.float32(n)
+                    img_a4 = apply_perspective_transform(img_raw, a4_pts, 1414, 1000)
+                    
+                    # Apply white balance (using our gentle version)
+                    # This matches ChromaStack's workflow but with safer algorithm
+                    img_calibrated = auto_white_balance_by_paper(img_a4, enable_wb=True)
+                    
+                    # Save corrected A4 image for chip selection
+                    import tempfile
+                    import os
+                    temp_dir = "output/ks_engine/debug"
+                    os.makedirs(temp_dir, exist_ok=True)
+                    a4_corrected_path = os.path.join(temp_dir, "a4_corrected_for_selection.jpg")
+                    cv2.imwrite(a4_corrected_path, img_calibrated)
+                    
+                    print(f"[K/S] A4 corrected image saved with gentle white balance applied")
+                    print(f"[K/S] Original image preserved: {original_img}")
+                    
+                    # IMPORTANT: Update state_img to corrected, but keep original_img unchanged
+                    return a4_corrected_path, original_img, a4_corrected_path, n, hint
+                except Exception as e:
+                    print(f"Error generating A4 corrected image: {e}")
+                    import traceback
+                    traceback.print_exc()
+            
+            # Return: state unchanged, original unchanged, work with markers
+            return img, original_img, vis, n, hint
+        else:
+            # Step 2: Selecting chip corners on corrected A4 image
+            # Note: img is now the corrected A4 image
+            vis = draw_ks_corner_points(img, n[4:], mode='chip')  # Only draw chip points
+            hint = get_next_hint(mode, len(n))
+            # Return: state unchanged, original unchanged, work with markers
+            return img, original_img, vis, n, hint
+    else:
+        # Standard modes
+        vis = draw_corner_points(img, n, mode)
+        hint = get_next_hint(mode, len(n))
+        # Return: state unchanged, original unchanged, work with markers
+        return img, original_img, vis, n, hint
+
+
+def draw_ks_corner_points(img_path, pts, mode='a4'):
+    """Draw corner points for K/S mode
+    
+    Args:
+        img_path: Image path or array
+        pts: List of points to draw
+        mode: 'a4' for A4 paper points (green), 'chip' for chip points (red)
+    """
+    import cv2
+    import numpy as np
+    
+    img = cv2.imread(img_path) if isinstance(img_path, str) else img_path.copy()
+    if img is None:
+        return img_path
+    
+    if mode == 'a4':
+        # Drawing A4 points (green, large markers)
+        color = (0, 255, 0)
+        marker_size = 30
+        circle_size = 15
+        font_scale = 1.2
+    else:  # mode == 'chip'
+        # Drawing chip points (red, smaller markers)
+        color = (0, 0, 255)
+        marker_size = 20
+        circle_size = 10
+        font_scale = 0.8
+    
+    for i, (x, y) in enumerate(pts):
+        # Draw cross marker
+        cv2.drawMarker(img, (x, y), color, cv2.MARKER_CROSS, marker_size, 3)
+        # Draw circle
+        cv2.circle(img, (x, y), circle_size, color, 3)
+        # Draw label
+        label = str(i + 1)
+        cv2.putText(
+            img, label,
+            (x + 20, y - 10),
+            cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, 3
+        )
+    
+    # Draw polylines if we have 4 points
+    if len(pts) == 4:
+        pts_array = np.array(pts, dtype=np.int32)
+        cv2.polylines(img, [pts_array], True, color, 3)
+    
+    return img
 
 
 def on_extractor_clear(img, mode):
