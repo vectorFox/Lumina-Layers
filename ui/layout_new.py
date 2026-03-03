@@ -6,9 +6,11 @@ UI layout definition - Refactored version with language switching support
 
 import json
 import os
+import re
 import shutil
 import time
 import zipfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import gradio as gr
@@ -2648,22 +2650,72 @@ def create_converter_tab_content(lang: str, lang_state=None, theme_state=None) -
     # ========== Image Crop Extension Events (Non-invasive) ==========
     from core.image_preprocessor import ImagePreprocessor
     
+    def _parse_svg_dimensions(svg_path):
+        """Parse SVG width/height with viewBox fallback."""
+        try:
+            root = ET.parse(svg_path).getroot()
+        except Exception:
+            return 0, 0
+
+        def _parse_len(raw):
+            if not raw:
+                return None
+            m = re.search(r"([0-9]+(?:\.[0-9]+)?)", str(raw))
+            if not m:
+                return None
+            try:
+                return int(float(m.group(1)))
+            except Exception:
+                return None
+
+        w = _parse_len(root.get("width"))
+        h = _parse_len(root.get("height"))
+
+        if w and h and w > 0 and h > 0:
+            return w, h
+
+        view_box = root.get("viewBox") or root.get("viewbox")
+        if view_box:
+            try:
+                parts = [float(v) for v in re.split(r"[,\s]+", view_box.strip()) if v]
+                if len(parts) == 4:
+                    vb_w = int(abs(parts[2]))
+                    vb_h = int(abs(parts[3]))
+                    if vb_w > 0 and vb_h > 0:
+                        return vb_w, vb_h
+            except Exception:
+                pass
+
+        return 0, 0
+
     def on_image_upload_process_with_html(image_path):
         """When image is uploaded, process and prepare for crop modal (不分析颜色)"""
         if image_path is None:
             return (
                 0, 0, None,
-                '<div id="preprocess-dimensions-data" data-width="0" data-height="0" style="display:none;"></div>'
+                '<div id="preprocess-dimensions-data" data-width="0" data-height="0" data-is-svg="0" style="display:none;"></div>'
             )
         
         try:
+            # SVG: bypass PIL-based preprocessor to avoid "cannot identify image file" noise.
+            if isinstance(image_path, str) and image_path.lower().endswith(".svg"):
+                width, height = _parse_svg_dimensions(image_path)
+                dimensions_html = (
+                    f'<div id="preprocess-dimensions-data" data-width="{width}" '
+                    f'data-height="{height}" data-is-svg="1" style="display:none;"></div>'
+                )
+                return (width, height, image_path, dimensions_html)
+
             info = ImagePreprocessor.process_upload(image_path)
             # 不在这里分析颜色，等用户确认裁剪后再分析
-            dimensions_html = f'<div id="preprocess-dimensions-data" data-width="{info.width}" data-height="{info.height}" style="display:none;"></div>'
+            dimensions_html = (
+                f'<div id="preprocess-dimensions-data" data-width="{info.width}" '
+                f'data-height="{info.height}" data-is-svg="0" style="display:none;"></div>'
+            )
             return (info.width, info.height, info.processed_path, dimensions_html)
         except Exception as e:
             print(f"Image upload error: {e}")
-            return (0, 0, None, '<div id="preprocess-dimensions-data" data-width="0" data-height="0" style="display:none;"></div>')
+            return (0, 0, None, '<div id="preprocess-dimensions-data" data-width="0" data-height="0" data-is-svg="0" style="display:none;"></div>')
     
     # JavaScript to open crop modal (不传递颜色推荐，弹窗中不显示)
     # Check if crop modal is enabled before opening
@@ -2743,6 +2795,11 @@ def create_converter_tab_content(lang: str, lang_state=None, theme_state=None) -
             const dimElement = document.querySelector('#preprocess-dimensions-data');
             console.log('[CROP] dimElement found:', !!dimElement);
             if (dimElement) {
+                const isSvgUpload = dimElement.dataset.isSvg === '1';
+                if (isSvgUpload) {
+                    console.log('[CROP] SVG upload detected, skipping crop modal.');
+                    return;
+                }
                 const width = parseInt(dimElement.dataset.width) || 0;
                 const height = parseInt(dimElement.dataset.height) || 0;
                 console.log('[CROP] Dimensions:', width, 'x', height);
@@ -2785,6 +2842,8 @@ def create_converter_tab_content(lang: str, lang_state=None, theme_state=None) -
         if processed_path is None:
             return None
         try:
+            if isinstance(processed_path, str) and processed_path.lower().endswith(".svg"):
+                return processed_path
             result_path = ImagePreprocessor.convert_to_png(processed_path)
             return result_path
         except Exception as e:
@@ -2803,6 +2862,9 @@ def create_converter_tab_content(lang: str, lang_state=None, theme_state=None) -
         if processed_path is None:
             return None
         try:
+            if isinstance(processed_path, str) and processed_path.lower().endswith(".svg"):
+                print("[DEBUG] SVG uploaded, skipping raster crop and keeping original path")
+                return processed_path
             import json
             data = json.loads(crop_json) if crop_json else {"x": 0, "y": 0, "w": 100, "h": 100}
             x = int(data.get("x", 0))
@@ -2957,17 +3019,90 @@ def create_converter_tab_content(lang: str, lang_state=None, theme_state=None) -
         glb_path = generate_realtime_glb(cache) if cache is not None else None
         return _preview_update(display), cache, status, glb_path
 
-    # 像素模式下禁用孤立像素清理 Checkbox
-    def on_modeling_mode_change_cleanup(mode):
-        if mode == ModelingMode.PIXEL:
-            return gr.update(interactive=False, value=False, info="像素模式下不支持孤立像素清理 | Not available in Pixel Art mode")
+    # 建模模式切换：统一处理可用参数提示与禁用逻辑
+    def on_modeling_mode_change_controls(mode):
+        is_pixel = mode == ModelingMode.PIXEL
+        is_vector = mode == ModelingMode.VECTOR
+
+        # Cleanup: Pixel 模式禁用，其它模式可用
+        if is_pixel:
+            cleanup_update = gr.update(
+                interactive=False,
+                value=False,
+                info="像素模式下不支持孤立像素清理 | Not available in Pixel Art mode",
+            )
         else:
-            return gr.update(interactive=True, info="清理 LUT 匹配后的孤立像素，提升打印成功率")
+            cleanup_update = gr.update(
+                interactive=True,
+                info="清理 LUT 匹配后的孤立像素，提升打印成功率",
+            )
+
+        # Outline / Cloisonné: 当前仅在 Raster 路径生效，Vector 模式禁用并提示
+        if is_vector:
+            outline_checkbox_update = gr.update(
+                interactive=False,
+                value=False,
+                info="Vector(SVG) 模式暂不支持描边；该选项仅在 Raster 路径生效",
+            )
+            outline_width_update = gr.update(
+                interactive=False,
+                info="Vector(SVG) 模式下已禁用",
+            )
+            cloisonne_checkbox_update = gr.update(
+                interactive=False,
+                value=False,
+                info="Vector(SVG) 模式暂不支持掐丝珐琅；该选项仅在 Raster 路径生效",
+            )
+            wire_width_update = gr.update(
+                interactive=False,
+                info="Vector(SVG) 模式下已禁用",
+            )
+            wire_height_update = gr.update(
+                interactive=False,
+                info="Vector(SVG) 模式下已禁用",
+            )
+        else:
+            outline_checkbox_update = gr.update(
+                interactive=True,
+                info="描边仅在生成阶段生效",
+            )
+            outline_width_update = gr.update(
+                interactive=True,
+                info=None,
+            )
+            cloisonne_checkbox_update = gr.update(
+                interactive=True,
+                info="掐丝珐琅仅在生成阶段生效（与 2.5D 浮雕互斥）",
+            )
+            wire_width_update = gr.update(
+                interactive=True,
+                info=None,
+            )
+            wire_height_update = gr.update(
+                interactive=True,
+                info=None,
+            )
+
+        return (
+            cleanup_update,
+            outline_checkbox_update,
+            outline_width_update,
+            cloisonne_checkbox_update,
+            wire_width_update,
+            wire_height_update,
+        )
 
     components['radio_conv_modeling_mode'].change(
-        on_modeling_mode_change_cleanup,
+        on_modeling_mode_change_controls,
         inputs=[components['radio_conv_modeling_mode']],
-        outputs=[components['checkbox_conv_cleanup']]
+        outputs=[
+            components['checkbox_conv_cleanup'],
+            components['checkbox_conv_outline_enable'],
+            components['slider_conv_outline_width'],
+            components['checkbox_conv_cloisonne_enable'],
+            components['slider_conv_wire_width'],
+            components['slider_conv_wire_height'],
+        ]
     ).then(
         fn=save_modeling_mode,
         inputs=[components['radio_conv_modeling_mode']],
@@ -3416,7 +3551,7 @@ def create_converter_tab_content(lang: str, lang_state=None, theme_state=None) -
         from ui.palette_extension import generate_dual_recommendations_html, build_selected_dual_color_html
 
         img, display_text, hex_val, msg = on_preview_click_select_color(cache, evt)
-        if hex_val is None:
+        if hex_val is None or not isinstance(hex_val, str):
             return _preview_update(img), gr.update(), gr.update(), gr.update(), msg
 
         rec_html = ""

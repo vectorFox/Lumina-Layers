@@ -5,6 +5,7 @@ Coordinates modules to complete image-to-3D model conversion.
 """
 
 import os
+import time
 from collections import deque
 import numpy as np
 import cv2
@@ -330,8 +331,13 @@ def _resolve_click_selection_hexes(cache, default_hex):
     显示色优先使用原配准色，内部状态色保持量化色，
     以兼容“显示原图色、替换按量化色作用连通域”的设计。
     """
-    q_hex = (cache or {}).get('selected_quantized_hex') or default_hex
-    m_hex = (cache or {}).get('selected_matched_hex') or q_hex
+    cached_q_hex = (cache or {}).get('selected_quantized_hex')
+    cached_m_hex = (cache or {}).get('selected_matched_hex')
+
+    # Gradio update objects are dict-like; they must not propagate into hex state.
+    fallback_hex = default_hex if isinstance(default_hex, str) else None
+    q_hex = cached_q_hex if isinstance(cached_q_hex, str) else fallback_hex
+    m_hex = cached_m_hex if isinstance(cached_m_hex, str) else q_hex
     return m_hex, q_hex
 
 
@@ -542,6 +548,8 @@ def convert_image_to_3d(image_path, lut_path, target_width_mm, spacer_thick,
     # Check if user selected vector mode AND file is SVG
     if modeling_mode == ModelingMode.VECTOR and image_path.lower().endswith('.svg'):
         print("[CONVERTER] 🎨 Using Native Vector Engine (Shapely/Clipper)...")
+        vector_timing = {}
+        vector_total_t0 = time.perf_counter()
 
         vector_replacements = _normalize_color_replacements_input(replacement_regions)
         if not vector_replacements:
@@ -554,6 +562,7 @@ def convert_image_to_3d(image_path, lut_path, target_width_mm, spacer_thick,
             vec_processor = VectorProcessor(actual_lut_path, color_mode)
 
             # Convert SVG to 3D scene
+            mesh_t0 = time.perf_counter()
             scene = vec_processor.svg_to_mesh(
                 svg_path=image_path,
                 target_width_mm=target_width_mm,
@@ -561,31 +570,91 @@ def convert_image_to_3d(image_path, lut_path, target_width_mm, spacer_thick,
                 structure_mode=structure_mode,
                 color_replacements=vector_replacements
             )
+            vector_timing["mesh_total_s"] = time.perf_counter() - mesh_t0
+            if isinstance(getattr(vec_processor, "last_stage_timings", None), dict):
+                vector_timing.update(vec_processor.last_stage_timings)
+
+            # Keep vector export behavior consistent with raster path:
+            # never export an empty scene.
+            if len(scene.geometry) == 0:
+                return None, None, None, "❌ Vector mesh generation failed: no valid geometry generated"
             
-            # 2. Export 3MF
+            # 2. Export 3MF (unified Bambu metadata path)
             base_name = os.path.splitext(os.path.basename(image_path))[0]
             out_path = os.path.join(OUTPUT_DIR, generate_model_filename(base_name, modeling_mode, color_mode))
-            scene.export(out_path)
-            
-            # [CRITICAL FIX] Disable safe_fix_3mf_names for Vector Mode
-            # Vector engine assigns names internally. External fixing causes index shifts
-            # if layers are missing (e.g., skipping Green causes Yellow to be named Green).
-            # safe_fix_3mf_names(out_path, color_conf['slots'])  # <-- DISABLED
-            
-            print(f"[CONVERTER] ✅ Vector 3MF exported: {out_path}")
+
+            is_six_color = len(vec_processor.img_processor.lut_rgb) == 1296
+            if is_six_color:
+                vec_color_conf = ColorSystem.SIX_COLOR
+                vec_color_mode = "6-Color"
+            else:
+                vec_color_conf = ColorSystem.get(color_mode)
+                vec_color_mode = color_mode
+
+            vec_slot_names = []
+            for geom_name, geom in scene.geometry.items():
+                vertices = getattr(geom, "vertices", None)
+                faces = getattr(geom, "faces", None)
+                v_count = len(vertices) if vertices is not None else 0
+                f_count = len(faces) if faces is not None else 0
+                if v_count == 0 or f_count == 0:
+                    print(f"[CONVERTER] Skipping empty vector geometry '{geom_name}' (v={v_count}, f={f_count})")
+                    continue
+                vec_slot_names.append(geom_name)
+
+            if not vec_slot_names:
+                return None, None, None, "❌ Vector export aborted: all generated geometries are empty"
+            vec_preview_colors = vec_color_conf['preview']
+
+            vec_print_settings = {
+                'layer_height': '0.08',
+                'initial_layer_height': '0.08',
+                'wall_loops': '1',
+                'top_shell_layers': '0',
+                'bottom_shell_layers': '0',
+                'sparse_infill_density': '100%',
+                'sparse_infill_pattern': 'zig-zag',
+                'nozzle_temperature': ['220'] * 8,
+                'bed_temperature': ['60'] * 8,
+                'filament_type': ['PLA'] * 8,
+                'print_speed': '100',
+                'travel_speed': '150',
+                'enable_support': '0',
+                'brim_width': '5',
+                'brim_type': 'auto_brim',
+            }
+
+            export_t0 = time.perf_counter()
+            export_scene_with_bambu_metadata(
+                scene=scene,
+                output_path=out_path,
+                slot_names=vec_slot_names,
+                preview_colors=vec_preview_colors,
+                settings=vec_print_settings,
+                color_mode=vec_color_mode,
+            )
+            vector_timing["export_3mf_s"] = time.perf_counter() - export_t0
+
+            print(f"[CONVERTER] Vector 3MF exported with Bambu metadata: {out_path}")
             
             # 4. Generate GLB Preview
             glb_path = None
+            glb_t0 = time.perf_counter()
             try:
                 glb_path = os.path.join(OUTPUT_DIR, generate_preview_filename(base_name))
                 scene.export(glb_path)
                 print(f"[CONVERTER] ✅ Preview GLB exported: {glb_path}")
             except Exception as e:
                 print(f"[CONVERTER] Warning: Preview generation skipped: {e}")
+            vector_timing["export_glb_s"] = time.perf_counter() - glb_t0
             
             # 5. [FIX] Generate 2D Preview Image from SVG
             preview_img = None
-            if HAS_SVG_LIB:
+            preview_t0 = time.perf_counter()
+            skip_heavy_preview = os.getenv("LUMINA_VECTOR_SKIP_2D_PREVIEW", "0") == "1"
+            if skip_heavy_preview:
+                print("[CONVERTER] Skipping SVG 2D preview due to LUMINA_VECTOR_SKIP_2D_PREVIEW=1")
+            elif HAS_SVG_LIB:
                 try:
                     # Use SVG-safe rasterization with bounds normalization
                     preview_rgba = vec_processor.img_processor._load_svg(image_path, target_width_mm)
@@ -654,9 +723,28 @@ def convert_image_to_3d(image_path, lut_path, target_width_mm, spacer_thick,
                     print(f"[CONVERTER] Failed to render SVG preview: {e}")
             else:
                 print("[CONVERTER] svglib not installed, skipping 2D preview")
+            vector_timing["preview_2d_s"] = time.perf_counter() - preview_t0
             
             # Update stats
             Stats.increment("conversions")
+
+            vector_timing["vector_branch_total_s"] = time.perf_counter() - vector_total_t0
+            if vector_timing:
+                print(
+                    "[CONVERTER] Vector timings (s): "
+                    f"parse={vector_timing.get('parse_s', 0.0):.3f}, "
+                    f"clip={vector_timing.get('occlusion_s', 0.0):.3f}, "
+                    f"match={vector_timing.get('color_match_s', 0.0):.3f}, "
+                    f"extrude_bottom={vector_timing.get('extrude_bottom_s', 0.0):.3f}, "
+                    f"backing={vector_timing.get('backing_s', 0.0):.3f}, "
+                    f"extrude_top={vector_timing.get('extrude_top_s', 0.0):.3f}, "
+                    f"assemble={vector_timing.get('assemble_s', 0.0):.3f}, "
+                    f"mesh_total={vector_timing.get('mesh_total_s', 0.0):.3f}, "
+                    f"export_3mf={vector_timing.get('export_3mf_s', 0.0):.3f}, "
+                    f"export_glb={vector_timing.get('export_glb_s', 0.0):.3f}, "
+                    f"preview_2d={vector_timing.get('preview_2d_s', 0.0):.3f}, "
+                    f"total={vector_timing.get('vector_branch_total_s', 0.0):.3f}"
+                )
             
             # Return results
             msg = f"✅ Vector conversion complete! Objects merged by material."
@@ -3181,7 +3269,7 @@ def on_preview_click_select_color(cache, evt: gr.SelectData, bed_label=None):
         return None, "未选择", None, "❌ 请先生成预览"
 
     if evt is None or evt.index is None:
-        return gr.update(), gr.update(), gr.update(), "⚠️ 无效点击"
+        return gr.update(), "未选择", None, "⚠️ 无效点击"
 
     if bed_label is None:
         bed_label = cache.get('bed_label', BedManager.DEFAULT_BED)
@@ -3193,7 +3281,7 @@ def on_preview_click_select_color(cache, evt: gr.SelectData, bed_label=None):
     target_width_mm = cache.get('target_width_mm')
 
     if target_w is None or target_h is None:
-        return gr.update(), gr.update(), gr.update(), "❌ 缓存数据不完整"
+        return gr.update(), "未选择", None, "❌ 缓存数据不完整"
 
     bed_w_mm, bed_h_mm = BedManager.get_bed_size(bed_label)
     ppm = BedManager.compute_scale(bed_w_mm, bed_h_mm)
@@ -3243,10 +3331,10 @@ def on_preview_click_select_color(cache, evt: gr.SelectData, bed_label=None):
     h, w = matched_rgb.shape[:2]
 
     if not (0 <= orig_x < w and 0 <= orig_y < h):
-        return gr.update(), gr.update(), gr.update(), f"⚠️ 点击了无效区域 ({orig_x}, {orig_y})"
+        return gr.update(), "未选择", None, f"⚠️ 点击了无效区域 ({orig_x}, {orig_y})"
 
     if not mask_solid[orig_y, orig_x]:
-        return gr.update(), gr.update(), gr.update(), "⚠️ 点击了背景区域"
+        return gr.update(), "未选择", None, "⚠️ 点击了背景区域"
 
     q_rgb = tuple(int(v) for v in quantized_image[orig_y, orig_x])
     m_rgb = tuple(int(v) for v in matched_rgb[orig_y, orig_x])
@@ -3541,7 +3629,7 @@ def detect_image_type(image_path):
         image_path: 图像文件路径
     
     Returns:
-        str: 建模模式 ("🎨 High-Fidelity (Smooth)", "📐 SVG Mode") 或 None
+        ModelingMode or None: 推荐的建模模式枚举值，或 None（不切换）
     """
     if not image_path:
         return None
@@ -3552,7 +3640,7 @@ def detect_image_type(image_path):
         
         if ext == '.svg':
             print(f"[AUTO_DETECT] SVG file detected, recommending SVG Mode")
-            return "📐 SVG Mode"
+            return ModelingMode.VECTOR
         else:
             print(f"[AUTO_DETECT] Raster image detected ({ext}), keeping current mode")
             return None  # 不自动切换光栅图像模式

@@ -195,8 +195,8 @@ def generate_palette_html(
 
 def build_selected_dual_color_html(quantized_hex: str = None, matched_hex: str = None, lang: str = "zh") -> str:
     """渲染“当前选中”双颜色块：量化色 + 原配准色（含下方编码）。"""
-    qh = (quantized_hex or "#000000").lower()
-    mh = (matched_hex or "#000000").lower()
+    qh = quantized_hex.lower() if isinstance(quantized_hex, str) else "#000000"
+    mh = matched_hex.lower() if isinstance(matched_hex, str) else "#000000"
 
     q_label = "量化色" if lang == "zh" else "Quantized"
     m_label = "原配准色" if lang == "zh" else "Matched"
