@@ -2563,7 +2563,7 @@ def create_converter_tab_content(lang: str, lang_state=None, theme_state=None) -
                             value=False
                         )
                     components['slider_conv_coating_height'] = gr.Slider(
-                        0.04, 0.12, 0.08, step=0.04,
+                        0.08, 0.16, 0.08, step=0.08,
                         label=I18n.get('conv_coating_height', lang)
                     )
                     # ========== END Coating Settings ==========
