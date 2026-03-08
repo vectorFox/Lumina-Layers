@@ -1,6 +1,6 @@
 """
 ╔═══════════════════════════════════════════════════════════════════════════════╗
-║                          LUMINA STUDIO v1.6.0                                 ║
+║                          LUMINA STUDIO v1.6.3                                 ║
 ║                    Multi-Material 3D Print Color System                       ║
 ╠═══════════════════════════════════════════════════════════════════════════════╣
 ║  Copyright (C) 2025 Lumina Studio Contributors                                ║
@@ -12,6 +12,7 @@ Main Entry Point
 
 import os
 import sys
+import signal
 import numpy as np
 import re
 import multiprocessing as mp
@@ -176,8 +177,25 @@ def start_browser(port):
     time.sleep(2)
     webbrowser.open(f"http://127.0.0.1:{port}")
 
+def _graceful_shutdown(signum, frame):
+    """Handle SIGTERM/SIGINT for clean container shutdown.
+    处理 SIGTERM/SIGINT 信号，实现容器优雅退出。
+
+    Args:
+        signum (int): Signal number received. (接收到的信号编号)
+        frame (frame): Current stack frame. (当前栈帧)
+    """
+    sig_name = signal.Signals(signum).name
+    print(f"Received {sig_name}, shutting down...")
+    os._exit(0)
+
+
 if __name__ == "__main__":
     try:
+        # Register signal handlers for graceful shutdown (SIGTERM from docker stop)
+        signal.signal(signal.SIGTERM, _graceful_shutdown)
+        signal.signal(signal.SIGINT, _graceful_shutdown)
+
         init_runtime_log()
         tray = None
         PORT = find_available_port(7860)

@@ -582,7 +582,7 @@ class BambuStudio3MFWriter:
         
         header = ET.SubElement(config, 'header')
         ET.SubElement(header, 'header_item', attrib={'key': 'X-BBL-Client-Type', 'value': 'slicer'})
-        ET.SubElement(header, 'header_item', attrib={'key': 'X-BBL-Client-Version', 'value': 'Lumina-1.6.0'})
+        ET.SubElement(header, 'header_item', attrib={'key': 'X-BBL-Client-Version', 'value': 'Lumina-1.6.3'})
         
         tree = ET.ElementTree(config)
         ET.indent(tree, space='  ')
