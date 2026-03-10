@@ -116,6 +116,24 @@ async def extractor_extract(
         except Exception as e:
             print(f"[8-COLOR] Error saving page {page_idx}: {e}")
 
+    # For 5-Color Extended mode: save page-specific temp file
+    if "5-Color" in color_mode and lut_path:
+        import sys
+        if getattr(sys, "frozen", False):
+            assets_dir = os.path.join(os.getcwd(), "assets")
+        else:
+            assets_dir = "assets"
+        os.makedirs(assets_dir, exist_ok=True)
+        page_idx: int = 1 if "1" in str(page) else 2
+        temp_path = os.path.join(assets_dir, f"temp_5c_ext_page_{page_idx}.npy")
+        try:
+            lut = np.load(lut_path)
+            np.save(temp_path, lut)
+            store.put(session_id, "lut_path", temp_path)
+            lut_path = temp_path
+        except Exception as e:
+            print(f"[5-COLOR-EXT] Error saving page {page_idx}: {e}")
+
     # Register LUT file
     lut_download_id = registry.register_path(session_id, lut_path)
 
@@ -180,6 +198,56 @@ def extractor_manual_fix(
         status="ok",
         message=status_msg or "Cell updated",
         lut_preview_url=f"/api/files/{preview_id}",
+    )
+
+
+@router.post("/merge-5color-extended")
+def extractor_merge_5color_extended(
+    store: SessionStore = Depends(get_session_store),
+    registry: FileRegistry = Depends(get_file_registry),
+) -> ExtractResponse:
+    """Merge two 5-Color Extended pages into a single LUT.
+    合并两页 5 色扩展 LUT 为一个完整 LUT。
+    """
+    import sys
+    from config import LUT_FILE_PATH
+
+    if getattr(sys, "frozen", False):
+        assets_dir = os.path.join(os.getcwd(), "assets")
+    else:
+        assets_dir = "assets"
+
+    path1 = os.path.join(assets_dir, "temp_5c_ext_page_1.npy")
+    path2 = os.path.join(assets_dir, "temp_5c_ext_page_2.npy")
+
+    if not os.path.exists(path1) or not os.path.exists(path2):
+        raise HTTPException(
+            status_code=400,
+            detail="Missing temp pages. Please extract Page 1 and Page 2 first.",
+        )
+
+    try:
+        lut1 = np.load(path1).reshape(-1, 3)
+        lut2 = np.load(path2).reshape(-1, 3)
+        merged = np.vstack([lut1, lut2])
+        np.save(LUT_FILE_PATH, merged)
+    except Exception as e:
+        _handle_core_error(e, "5-Color Extended merge")
+
+    # Create session for merged result
+    session_id = store.create()
+    store.put(session_id, "lut_path", LUT_FILE_PATH)
+    store.put(session_id, "color_mode", "5-Color Extended")
+
+    lut_download_id = registry.register_path(session_id, LUT_FILE_PATH)
+
+    return ExtractResponse(
+        session_id=session_id,
+        status="ok",
+        message=f"5-Color Extended LUT merged ({merged.shape[0]}x{merged.shape[1]})",
+        lut_download_url=f"/api/files/{lut_download_id}",
+        warp_view_url="",
+        lut_preview_url="",
     )
 
 

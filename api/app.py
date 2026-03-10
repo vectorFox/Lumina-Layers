@@ -23,8 +23,10 @@ from api.routers import (
     calibration_router,
     converter_router,
     extractor_router,
+    five_color_router,
     health_router,
     lut_router,
+    slicer_router,
     system_router,
 )
 
@@ -51,8 +53,10 @@ def create_app() -> FastAPI:
     app.include_router(converter_router)
     app.include_router(extractor_router)
     app.include_router(calibration_router)
+    app.include_router(five_color_router)
     app.include_router(health_router)
     app.include_router(lut_router)
+    app.include_router(slicer_router)
     app.include_router(system_router)
 
     @app.get("/api/files/{file_id}")

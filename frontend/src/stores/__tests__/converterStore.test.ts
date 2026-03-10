@@ -149,3 +149,93 @@ describe('clearAllRemaps', () => {
     expect(store().remapHistory).toEqual([]);
   });
 });
+
+
+describe('setModelBounds', () => {
+  beforeEach(() => {
+    resetStore();
+    useConverterStore.setState({ modelBounds: null });
+  });
+
+  it('stores modelBounds correctly', () => {
+    const bounds = { minX: -10, maxX: 10, minY: -5, maxY: 5, maxZ: 3 };
+    useConverterStore.getState().setModelBounds(bounds);
+    expect(useConverterStore.getState().modelBounds).toEqual(bounds);
+  });
+
+  it('sets modelBounds to null', () => {
+    useConverterStore.getState().setModelBounds({ minX: 0, maxX: 1, minY: 0, maxY: 1, maxZ: 1 });
+    useConverterStore.getState().setModelBounds(null);
+    expect(useConverterStore.getState().modelBounds).toBeNull();
+  });
+});
+
+describe('setEnableRelief auto-initialization', () => {
+  beforeEach(() => {
+    resetStore();
+    useConverterStore.setState({
+      enable_relief: false,
+      color_height_map: {},
+      heightmap_max_height: 5.0,
+      palette: [],
+    });
+  });
+
+  it('auto-initializes color_height_map when palette non-empty and map empty', () => {
+    useConverterStore.setState({
+      palette: [
+        { quantized_hex: 'ff0000', matched_hex: 'ee0000', pixel_count: 100, percentage: 50 },
+        { quantized_hex: '00ff00', matched_hex: '00ee00', pixel_count: 100, percentage: 50 },
+      ],
+      color_height_map: {},
+      heightmap_max_height: 4.0,
+    });
+
+    useConverterStore.getState().setEnableRelief(true);
+
+    const state = useConverterStore.getState();
+    expect(state.enable_relief).toBe(true);
+    expect(state.color_height_map).toEqual({
+      'ee0000': 2.0,  // 4.0 * 0.5
+      '00ee00': 2.0,
+    });
+  });
+
+  it('does NOT overwrite existing color_height_map', () => {
+    useConverterStore.setState({
+      palette: [
+        { quantized_hex: 'ff0000', matched_hex: 'ee0000', pixel_count: 100, percentage: 50 },
+        { quantized_hex: '00ff00', matched_hex: '00ee00', pixel_count: 100, percentage: 50 },
+      ],
+      color_height_map: { 'ee0000': 3.5 },
+      heightmap_max_height: 4.0,
+    });
+
+    useConverterStore.getState().setEnableRelief(true);
+
+    const state = useConverterStore.getState();
+    expect(state.enable_relief).toBe(true);
+    // Should keep the existing map untouched
+    expect(state.color_height_map).toEqual({ 'ee0000': 3.5 });
+  });
+
+  it('does NOT auto-initialize when palette is empty', () => {
+    useConverterStore.setState({
+      palette: [],
+      color_height_map: {},
+      heightmap_max_height: 4.0,
+    });
+
+    useConverterStore.getState().setEnableRelief(true);
+
+    expect(useConverterStore.getState().color_height_map).toEqual({});
+  });
+
+  it('disables cloisonne when enabling relief', () => {
+    useConverterStore.setState({ enable_cloisonne: true });
+
+    useConverterStore.getState().setEnableRelief(true);
+
+    expect(useConverterStore.getState().enable_cloisonne).toBe(false);
+  });
+});

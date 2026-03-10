@@ -4,9 +4,13 @@ import {
   StructureMode,
 } from "../../api/types";
 import ImageUpload from "../ui/ImageUpload";
+import BatchFileUploader from "../ui/BatchFileUploader";
+import Checkbox from "../ui/Checkbox";
 import Dropdown from "../ui/Dropdown";
 import Slider from "../ui/Slider";
 import RadioGroup from "../ui/RadioGroup";
+import { CropModal } from "../ui/CropModal";
+import type { CropData } from "../ui/CropModal";
 
 const structureModeOptions = Object.values(StructureMode).map((v) => ({
   label: v,
@@ -28,6 +32,11 @@ export default function BasicSettings() {
     spacer_thick,
     structure_mode,
     modeling_mode,
+    enableCrop,
+    cropModalOpen,
+    isCropping,
+    batchMode,
+    batchFiles,
     setImageFile,
     setLutName,
     setTargetWidthMm,
@@ -35,7 +44,13 @@ export default function BasicSettings() {
     setSpacerThick,
     setStructureMode,
     setModelingMode,
+    setEnableCrop,
+    setCropModalOpen,
+    submitCrop,
     setError,
+    setBatchMode,
+    addBatchFiles,
+    removeBatchFile,
   } = useConverterStore();
 
   const lutOptions = lutList.map((name) => ({ label: name, value: name }));
@@ -48,13 +63,49 @@ export default function BasicSettings() {
     setImageFile(file);
   };
 
+  const handleCropConfirm = (data: CropData) => {
+    void submitCrop(data.x, data.y, data.width, data.height);
+  };
+
   return (
     <div className="flex flex-col gap-4">
-      <ImageUpload
-        onFileSelect={handleFileSelect}
-        accept="image/jpeg,image/png,image/svg+xml"
-        preview={imagePreviewUrl ?? undefined}
+      <Checkbox
+        label="批量模式"
+        checked={batchMode}
+        onChange={setBatchMode}
       />
+
+      {batchMode ? (
+        <BatchFileUploader
+          files={batchFiles}
+          onFilesAdd={addBatchFiles}
+          onFileRemove={removeBatchFile}
+          accept="image/jpeg,image/png,image/svg+xml"
+        />
+      ) : (
+        <>
+          <ImageUpload
+            onFileSelect={handleFileSelect}
+            accept="image/jpeg,image/png,image/svg+xml"
+            preview={imagePreviewUrl ?? undefined}
+          />
+
+          <Checkbox
+            label="上传后裁剪"
+            checked={enableCrop}
+            onChange={setEnableCrop}
+          />
+
+          <CropModal
+            open={cropModalOpen}
+            imageSrc={imagePreviewUrl ?? ""}
+            onConfirm={handleCropConfirm}
+            onUseOriginal={() => setCropModalOpen(false)}
+            onClose={() => setCropModalOpen(false)}
+            isLoading={isCropping}
+          />
+        </>
+      )}
 
       <Dropdown
         label="LUT"

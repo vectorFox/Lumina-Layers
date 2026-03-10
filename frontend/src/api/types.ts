@@ -137,6 +137,7 @@ export interface BedSizeListResponse {
 export enum CalibrationColorMode {
   BW = "BW (Black & White)",
   FOUR_COLOR = "4-Color",
+  FIVE_COLOR_EXT = "5-Color Extended (1444)",
   SIX_COLOR = "6-Color (Smart 1296)",
   EIGHT_COLOR = "8-Color Max",
 }
@@ -173,6 +174,7 @@ export interface CalibrationResponse {
 export enum ExtractorColorMode {
   BW = "BW (Black & White)",
   FOUR_COLOR = "4-Color",
+  FIVE_COLOR_EXT = "5-Color Extended",
   SIX_COLOR = "6-Color (Smart 1296)",
   EIGHT_COLOR = "8-Color Max",
 }
@@ -252,4 +254,119 @@ export interface LutColorsResponse {
   lut_name: string;
   total: number;
   colors: LutColorEntry[];
+}
+
+// ========== Slicer Models ==========
+
+export interface SlicerInfo {
+  id: string;
+  display_name: string;
+  exe_path: string;
+}
+
+export interface SlicerDetectResponse {
+  slicers: SlicerInfo[];
+}
+
+export interface SlicerLaunchRequest {
+  slicer_id: string;
+  file_path: string;
+}
+
+export interface SlicerLaunchResponse {
+  status: string;
+  message: string;
+}
+
+// ========== Batch Processing Models ==========
+
+export interface BatchItemResult {
+  filename: string;
+  status: string;
+  error?: string;
+}
+
+export interface BatchResponse {
+  status: string;
+  message: string;
+  download_url: string;
+  results: BatchItemResult[];
+}
+
+export interface BatchConvertParams {
+  lut_name: string;
+  target_width_mm: number;
+  spacer_thick: number;
+  structure_mode: string;
+  auto_bg: boolean;
+  bg_tol: number;
+  color_mode: string;
+  modeling_mode: string;
+  quantize_colors: number;
+  enable_cleanup: boolean;
+}
+
+// ========== Five-Color Query Models ==========
+
+export interface BaseColorEntry {
+  index: number;
+  rgb: [number, number, number];
+  name: string;
+  hex: string;
+}
+
+export interface BaseColorsResponse {
+  lut_name: string;
+  color_count: number;
+  colors: BaseColorEntry[];
+}
+
+export interface FiveColorQueryRequest {
+  lut_name: string;
+  selected_indices: number[];
+}
+
+export interface FiveColorQueryResponse {
+  found: boolean;
+  selected_indices: number[];
+  result_rgb: [number, number, number] | null;
+  result_hex: string | null;
+  row_index: number;
+  message: string;
+}
+
+// ========== Color Replace Models ==========
+
+export interface ColorReplaceResponse {
+  status: string;
+  message: string;
+  preview_url: string;
+  replacement_count: number;
+}
+
+// ========== Settings Models ==========
+
+export interface UserSettings {
+  last_lut: string;
+  last_modeling_mode: string;
+  last_color_mode: string;
+  last_slicer: string;
+  palette_mode: string;
+  enable_crop_modal: boolean;
+}
+
+export interface UserSettingsResponse {
+  status: string;
+  settings: UserSettings;
+}
+
+export interface SaveSettingsResponse {
+  status: string;
+  message: string;
+}
+
+export interface StatsResponse {
+  calibrations: number;
+  extractions: number;
+  conversions: number;
 }

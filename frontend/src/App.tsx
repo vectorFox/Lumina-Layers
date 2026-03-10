@@ -9,8 +9,12 @@ import ExtractorPanel from "./components/ExtractorPanel";
 import ExtractorCanvas from "./components/ExtractorCanvas";
 import LutManagerPanel from "./components/LutManagerPanel";
 import AboutView from "./components/AboutView";
+import FiveColorQueryPanel from "./components/FiveColorQueryPanel";
 import LoadingSpinner from "./components/LoadingSpinner";
 import { useActiveModelUrl } from "./hooks/useActiveModelUrl";
+import { I18nProvider } from "./i18n/context";
+import { LanguageToggle } from "./components/LanguageToggle";
+import { ThemeToggle } from "./components/ThemeToggle";
 
 /* ---------- Error Boundary ---------- */
 
@@ -45,7 +49,7 @@ class SceneErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryStat
 
 function App() {
   const [connected, setConnected] = useState<boolean | null>(null);
-  const [activeTab, setActiveTab] = useState<"converter" | "calibration" | "extractor" | "lut-manager" | "about">("converter");
+  const [activeTab, setActiveTab] = useState<"converter" | "calibration" | "extractor" | "lut-manager" | "five-color" | "about">("converter");
   const modelUrl = useActiveModelUrl(activeTab);
 
   useEffect(() => {
@@ -56,6 +60,7 @@ function App() {
   }, []);
 
   return (
+    <I18nProvider>
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
       <header className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
         <h1 className="text-xl font-semibold tracking-tight">
@@ -121,6 +126,20 @@ function App() {
           </button>
           <button
             role="tab"
+            data-testid="tab-five-color"
+            aria-current={activeTab === "five-color" ? "page" : undefined}
+            aria-selected={activeTab === "five-color"}
+            className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${
+              activeTab === "five-color"
+                ? "bg-blue-600 text-white"
+                : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+            }`}
+            onClick={() => setActiveTab("five-color")}
+          >
+            Five-Color
+          </button>
+          <button
+            role="tab"
             data-testid="tab-about"
             aria-current={activeTab === "about" ? "page" : undefined}
             aria-selected={activeTab === "about"}
@@ -135,25 +154,29 @@ function App() {
           </button>
         </nav>
 
-        {connected === null ? (
-          <span className="text-sm text-gray-400">Checking backend…</span>
-        ) : connected ? (
-          <span
-            data-testid="health-badge-ok"
-            className="inline-flex items-center gap-1.5 rounded-full bg-green-900/60 px-3 py-1 text-sm text-green-300"
-          >
-            <span className="h-2 w-2 rounded-full bg-green-400" />
-            Backend Connected
-          </span>
-        ) : (
-          <span
-            data-testid="health-badge-fail"
-            className="inline-flex items-center gap-1.5 rounded-full bg-red-900/60 px-3 py-1 text-sm text-red-300"
-          >
-            <span className="h-2 w-2 rounded-full bg-red-400" />
-            Backend Unreachable
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          <LanguageToggle />
+          <ThemeToggle />
+          {connected === null ? (
+            <span className="text-sm text-gray-400">Checking backend…</span>
+          ) : connected ? (
+            <span
+              data-testid="health-badge-ok"
+              className="inline-flex items-center gap-1.5 rounded-full bg-green-900/60 px-3 py-1 text-sm text-green-300"
+            >
+              <span className="h-2 w-2 rounded-full bg-green-400" />
+              Backend Connected
+            </span>
+          ) : (
+            <span
+              data-testid="health-badge-fail"
+              className="inline-flex items-center gap-1.5 rounded-full bg-red-900/60 px-3 py-1 text-sm text-red-300"
+            >
+              <span className="h-2 w-2 rounded-full bg-red-400" />
+              Backend Unreachable
+            </span>
+          )}
+        </div>
       </header>
 
       <main className="flex-1 flex flex-row overflow-hidden">
@@ -166,12 +189,14 @@ function App() {
           <LutManagerPanel />
         ) : activeTab === "about" ? (
           <AboutView />
+        ) : activeTab === "five-color" ? (
+          <FiveColorQueryPanel />
         ) : (
           <ExtractorPanel />
         )}
 
         {/* Right area – hidden when About tab is active */}
-        {activeTab !== "about" && (
+        {activeTab !== "about" && activeTab !== "five-color" && (
         <section data-testid="canvas-area" className="flex-1 relative">
           {activeTab === "extractor" ? (
             <ExtractorCanvas />
@@ -192,6 +217,7 @@ function App() {
         )}
       </main>
     </div>
+    </I18nProvider>
   );
 }
 

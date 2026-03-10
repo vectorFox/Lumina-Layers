@@ -58,3 +58,13 @@ export async function mergeEightColor(): Promise<ExtractResponse> {
   );
   return response.data;
 }
+
+/** 合并 5 色扩展双页 LUT */
+export async function mergeFiveColorExtended(): Promise<ExtractResponse> {
+  const response = await apiClient.post<ExtractResponse>(
+    "/extractor/merge-5color-extended",
+    {},
+    { timeout: 60_000 }
+  );
+  return response.data;
+}

@@ -28,6 +28,7 @@ from api.schemas.responses import (
     BatchItemResult,
     BatchResponse,
     ColorReplaceResponse,
+    CropResponse,
     GenerateResponse,
     HeightmapUploadResponse,
     MergePreviewResponse,
@@ -35,6 +36,7 @@ from api.schemas.responses import (
 )
 from api.session_store import SessionStore
 from core.color_merger import ColorMerger
+from core.image_preprocessor import ImagePreprocessor
 from core.color_replacement import ColorReplacementManager
 from core.converter import convert_image_to_3d, extract_color_palette, generate_empty_bed_glb, generate_final_model, generate_preview_cached, generate_segmented_glb
 from config import BedManager, ModelingMode as CoreModelingMode, PrinterConfig
@@ -124,6 +126,58 @@ def get_bed_preview(
 
     glb_id = registry.register_path("bed-preview", glb_path)
     return {"preview_3d_url": f"/api/files/{glb_id}"}
+
+
+@router.post("/crop", response_model=CropResponse)
+async def crop_image(
+    image: UploadFile = File(..., description="输入图像"),
+    x: int = Form(0, description="裁剪起点 X"),
+    y: int = Form(0, description="裁剪起点 Y"),
+    width: int = Form(100, ge=1, description="裁剪宽度"),
+    height: int = Form(100, ge=1, description="裁剪高度"),
+    registry: FileRegistry = Depends(get_file_registry),
+) -> CropResponse:
+    """Crop an uploaded image and return the cropped result URL.
+    裁剪上传的图片并返回裁剪后的文件 URL。
+
+    Args:
+        image: 上传的图片文件
+        x: 裁剪起点 X 坐标
+        y: 裁剪起点 Y 坐标
+        width: 裁剪宽度（像素）
+        height: 裁剪高度（像素）
+        registry: FileRegistry 依赖
+
+    Returns:
+        CropResponse: 包含裁剪后图片 URL 和尺寸
+    """
+    # 1. Save uploaded file to temp path
+    temp_path = await upload_to_tempfile(image)
+
+    # 2. Validate that the file is a readable image
+    try:
+        ImagePreprocessor.get_image_dimensions(temp_path)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid image file")
+
+    # 3. Crop image (CropRegion.clamp is called internally)
+    try:
+        cropped_path = ImagePreprocessor.crop_image(temp_path, x, y, width, height)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    # 4. Get cropped image dimensions
+    w, h = ImagePreprocessor.get_image_dimensions(cropped_path)
+
+    # 5. Register cropped file and return response
+    file_id = registry.register_path("crop", cropped_path)
+    return CropResponse(
+        status="ok",
+        message="Image cropped successfully",
+        cropped_url=f"/api/files/{file_id}",
+        width=w,
+        height=h,
+    )
 
 
 @router.post("/preview")

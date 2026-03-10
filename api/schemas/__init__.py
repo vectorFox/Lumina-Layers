@@ -8,6 +8,12 @@ individual domain modules.
 导入，无需深入各领域子模块。
 """
 
+from api.schemas.five_color import (
+    BaseColorEntry,
+    BaseColorsResponse,
+    FiveColorQueryRequest,
+    FiveColorQueryResponse,
+)
 from api.schemas.calibration import BackingColor, CalibrationGenerateRequest
 from api.schemas.converter import (
     AutoHeightMode,
@@ -37,6 +43,12 @@ from api.schemas.system import (
     CacheCleanupDetails,
     ClearCacheResponse,
     ClearCacheResult,
+)
+from api.schemas.slicer import (
+    SlicerDetectResponse,
+    SlicerInfo,
+    SlicerLaunchRequest,
+    SlicerLaunchResponse,
 )
 from api.schemas.responses import (
     BatchItemResult,
@@ -80,10 +92,20 @@ __all__ = [
     "MergeResponse",
     "MergeStats",
     "LutInfoResponse",
+    # --- Slicer models ---
+    "SlicerInfo",
+    "SlicerDetectResponse",
+    "SlicerLaunchRequest",
+    "SlicerLaunchResponse",
     # --- System models ---
     "CacheCleanupDetails",
     "ClearCacheResponse",
     "ClearCacheResult",
+    # --- Five-Color models ---
+    "BaseColorEntry",
+    "BaseColorsResponse",
+    "FiveColorQueryRequest",
+    "FiveColorQueryResponse",
     # --- Response models ---
     "CalibrationResponse",
     "PreviewResponse",

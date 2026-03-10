@@ -7,6 +7,7 @@ import type {
   BedSizeItem,
   PaletteEntry,
   AutoHeightMode,
+  BatchResponse,
 } from "../api/types";
 import {
   ColorMode as ColorModeEnum,
@@ -20,6 +21,9 @@ import {
   fetchBedSizes as apiFetchBedSizes,
   uploadHeightmap as apiUploadHeightmap,
   fetchLutColors as apiFetchLutColors,
+  cropImage as apiCropImage,
+  convertBatch as apiConvertBatch,
+  replaceColor as apiReplaceColor,
 } from "../api/converter";
 import type { LutColorEntry } from "../api/types";
 import {
@@ -114,6 +118,20 @@ export interface ConverterState {
   // 3D 预览
   previewGlbUrl: string | null;
 
+  // 模型边界（供 KeychainRing3D 定位）
+  modelBounds: {
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+    maxZ: number;
+  } | null;
+
+  // 裁剪
+  enableCrop: boolean;
+  cropModalOpen: boolean;
+  isCropping: boolean;
+
   // UI 状态
   isLoading: boolean;
   error: string | null;
@@ -132,6 +150,15 @@ export interface ConverterState {
   bed_label: string;
   bedSizes: BedSizeItem[];
   bedSizesLoading: boolean;
+
+  // 批量模式
+  batchMode: boolean;
+  batchFiles: File[];
+  batchLoading: boolean;
+  batchResult: BatchResponse | null;
+
+  // 颜色替换预览
+  replacePreviewLoading: boolean;
 }
 
 // ========== Actions Interface ==========
@@ -193,17 +220,47 @@ export interface ConverterActions {
   // GLB 预览
   setPreviewGlbUrl: (url: string | null) => void;
 
+  // 模型边界
+  setModelBounds: (bounds: ConverterState['modelBounds']) => void;
+
   // API 操作
   fetchLutList: () => Promise<void>;
   fetchLutColors: (lutName: string) => Promise<void>;
   submitPreview: () => Promise<void>;
   submitGenerate: () => Promise<string | null>;
 
+  // 裁剪
+  setEnableCrop: (enabled: boolean) => void;
+  setCropModalOpen: (open: boolean) => void;
+  submitCrop: (x: number, y: number, width: number, height: number) => Promise<void>;
+
+  // 批量模式
+  setBatchMode: (enabled: boolean) => void;
+  addBatchFiles: (files: File[]) => void;
+  removeBatchFile: (index: number) => void;
+  clearBatchFiles: () => void;
+  submitBatch: () => Promise<void>;
+
+  // 颜色替换预览
+  submitReplacePreview: () => Promise<void>;
+
   // UI 状态
   setError: (error: string | null) => void;
   clearError: () => void;
 }
 
+
+// ========== localStorage Helpers ==========
+
+function loadEnableCrop(): boolean {
+  try {
+    const stored = localStorage.getItem("lumina_enableCrop");
+    if (stored === null) return true;
+    return stored === "true";
+  } catch {
+    return true;
+  }
+}
 
 // ========== Default State ==========
 
@@ -248,6 +305,10 @@ const DEFAULT_STATE: ConverterState = {
   heightmapFile: null,
   heightmapThumbnailUrl: null,
   previewGlbUrl: null,
+  modelBounds: null,
+  enableCrop: loadEnableCrop(),
+  cropModalOpen: false,
+  isCropping: false,
   isLoading: false,
   error: null,
   previewImageUrl: null,
@@ -259,6 +320,11 @@ const DEFAULT_STATE: ConverterState = {
   bed_label: "256×256 mm",
   bedSizes: [],
   bedSizesLoading: false,
+  batchMode: false,
+  batchFiles: [],
+  batchLoading: false,
+  batchResult: null,
+  replacePreviewLoading: false,
 };
 
 // ========== Store ==========
@@ -290,7 +356,12 @@ export const useConverterStore = create<ConverterState & ConverterActions>(
       };
       img.src = previewUrl;
 
-      set({ imageFile: file, imagePreviewUrl: previewUrl });
+      const shouldOpenCrop = _get().enableCrop;
+      set({
+        imageFile: file,
+        imagePreviewUrl: previewUrl,
+        cropModalOpen: shouldOpenCrop,
+      });
     },
 
     // --- 基础参数 ---
@@ -360,9 +431,14 @@ export const useConverterStore = create<ConverterState & ConverterActions>(
           enable_relief: enabled,
           enable_cloisonne: enabled ? false : state.enable_cloisonne,
         };
-        // Requirement 5.5: 当 enable_relief 从 false 切换为 true 时，
-        // 为 palette 中每个颜色初始化默认高度值（heightmap_max_height 的 50%）
-        if (enabled && !state.enable_relief && state.palette.length > 0) {
+        // Requirement 6.5: When switching enable_relief from false to true,
+        // auto-initialize color_height_map ONLY if it is currently empty
+        if (
+          enabled &&
+          !state.enable_relief &&
+          state.palette.length > 0 &&
+          Object.keys(state.color_height_map).length === 0
+        ) {
           const defaultHeight = state.heightmap_max_height * 0.5;
           const initMap: Record<string, number> = {};
           for (const entry of state.palette) {
@@ -481,6 +557,10 @@ export const useConverterStore = create<ConverterState & ConverterActions>(
 
     // --- GLB 预览 ---
     setPreviewGlbUrl: (url: string | null) => set({ previewGlbUrl: url }),
+
+    // --- 模型边界 ---
+    setModelBounds: (bounds: ConverterState['modelBounds']) =>
+      set({ modelBounds: bounds }),
 
     fetchBedSizes: async () => {
       set({ bedSizesLoading: true });
@@ -659,6 +739,146 @@ export const useConverterStore = create<ConverterState & ConverterActions>(
           error: err instanceof Error ? err.message : "生成失败",
         });
         return null;
+      }
+    },
+
+    // --- 裁剪 ---
+    setEnableCrop: (enabled: boolean) => {
+      set({ enableCrop: enabled });
+      try {
+        localStorage.setItem("lumina_enableCrop", String(enabled));
+      } catch {
+        // localStorage unavailable, ignore
+      }
+    },
+
+    setCropModalOpen: (open: boolean) => set({ cropModalOpen: open }),
+
+    submitCrop: async (x: number, y: number, width: number, height: number) => {
+      const state = _get();
+      if (!state.imageFile) {
+        set({ error: "No image file to crop" });
+        return;
+      }
+      set({ isCropping: true, error: null });
+      try {
+        const response = await apiCropImage(state.imageFile, x, y, width, height);
+        const croppedFullUrl = `http://localhost:8000${response.cropped_url}`;
+
+        // Fetch cropped image as Blob to create a new File
+        const blob = await fetch(croppedFullUrl).then((r) => r.blob());
+        const croppedFile = new File([blob], state.imageFile.name, {
+          type: blob.type || state.imageFile.type,
+        });
+
+        // Revoke previous preview URL
+        const prev = _get().imagePreviewUrl;
+        if (prev) {
+          URL.revokeObjectURL(prev);
+        }
+
+        const newPreviewUrl = URL.createObjectURL(croppedFile);
+
+        // Update aspect ratio from cropped dimensions
+        const ratio = response.width / response.height;
+
+        set({
+          imageFile: croppedFile,
+          imagePreviewUrl: newPreviewUrl,
+          aspectRatio: ratio,
+          cropModalOpen: false,
+          isCropping: false,
+        });
+      } catch (err) {
+        set({
+          isCropping: false,
+          error: err instanceof Error ? err.message : "Crop failed",
+        });
+      }
+    },
+
+    // --- 批量模式 ---
+    setBatchMode: (enabled: boolean) => {
+      if (enabled) {
+        set({ batchMode: true });
+      } else {
+        set({ batchMode: false, batchFiles: [], batchResult: null });
+      }
+    },
+
+    addBatchFiles: (files: File[]) => {
+      const valid = files.filter((f) => isValidImageType(f.type));
+      if (valid.length === 0) return;
+      set((state) => ({ batchFiles: [...state.batchFiles, ...valid] }));
+    },
+
+    removeBatchFile: (index: number) => {
+      set((state) => ({
+        batchFiles: state.batchFiles.filter((_, i) => i !== index),
+      }));
+    },
+
+    clearBatchFiles: () => set({ batchFiles: [] }),
+
+    submitBatch: async () => {
+      const state = _get();
+      set({ batchLoading: true, batchResult: null, error: null });
+      try {
+        const params = {
+          lut_name: state.lut_name,
+          target_width_mm: state.target_width_mm,
+          spacer_thick: state.spacer_thick,
+          structure_mode: state.structure_mode,
+          auto_bg: state.auto_bg,
+          bg_tol: state.bg_tol,
+          color_mode: state.color_mode,
+          modeling_mode: state.modeling_mode,
+          quantize_colors: state.quantize_colors,
+          enable_cleanup: state.enable_cleanup,
+        };
+        const result = await apiConvertBatch(state.batchFiles, params);
+        set({ batchResult: result, batchLoading: false });
+      } catch (err) {
+        set({
+          batchLoading: false,
+          error: err instanceof Error ? err.message : "批量处理失败",
+        });
+      }
+    },
+
+    // --- 颜色替换预览 ---
+    submitReplacePreview: async () => {
+      const state = _get();
+      const entries = Object.entries(state.colorRemapMap);
+      if (entries.length === 0 || !state.sessionId) return;
+
+      set({ replacePreviewLoading: true, error: null });
+      try {
+        let lastPreviewUrl = state.previewImageUrl;
+        for (const [origHex, newHex] of entries) {
+          // 查找 palette 中对应的 matched_hex 作为 selected_color
+          const paletteEntry = state.palette.find(
+            (p) => p.matched_hex === origHex,
+          );
+          const selectedColor = `#${paletteEntry ? paletteEntry.matched_hex : origHex}`;
+          const replacementColor = `#${newHex}`;
+
+          const response = await apiReplaceColor(
+            state.sessionId,
+            selectedColor,
+            replacementColor,
+          );
+          lastPreviewUrl = `http://localhost:8000${response.preview_url}`;
+        }
+        set({
+          replacePreviewLoading: false,
+          previewImageUrl: lastPreviewUrl,
+        });
+      } catch (err) {
+        set({
+          replacePreviewLoading: false,
+          error: err instanceof Error ? err.message : "颜色替换预览失败",
+        });
       }
     },
 

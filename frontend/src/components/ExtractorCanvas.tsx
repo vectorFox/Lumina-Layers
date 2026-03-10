@@ -24,6 +24,12 @@ export const CORNER_LABELS: Record<string, string[]> = {
     "黄色 (左下) / Yellow (BL)",
   ],
   "8-Color Max": ["TL", "TR", "BR", "BL"],
+  "5-Color Extended": [
+    "白色 (左上) / White (TL)",
+    "红色 (右上) / Red (TR)",
+    "黑色 (右下) / Black (BR)",
+    "黄色 (左下) / Yellow (BL)",
+  ],
 };
 
 // ========== Coordinate Conversion (exported for testing) ==========
@@ -92,6 +98,7 @@ export const LUT_GRID_SIZE: Record<string, number> = {
   [ExtractorColorMode.FOUR_COLOR]: 32,
   [ExtractorColorMode.SIX_COLOR]: 36,
   [ExtractorColorMode.EIGHT_COLOR]: 37,
+  [ExtractorColorMode.FIVE_COLOR_EXT]: 38,
 };
 
 // ========== Component ==========

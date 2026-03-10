@@ -9,7 +9,7 @@ import { useCalibrationStore } from "../stores/calibrationStore";
  * - 否则返回 converterModelUrl（热床由 BedPlatform 组件独立渲染）
  */
 export function useActiveModelUrl(
-  activeTab: "converter" | "calibration" | "extractor" | "lut-manager" | "about"
+  activeTab: "converter" | "calibration" | "extractor" | "lut-manager" | "five-color" | "about"
 ): string | null {
   const converterModelUrl = useConverterStore((s) => s.modelUrl);
   const calibrationModelUrl = useCalibrationStore((s) => s.modelUrl);

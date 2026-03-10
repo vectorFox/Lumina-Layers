@@ -8,6 +8,9 @@ import type {
   BedSizeListResponse,
   HeightmapUploadResponse,
   LutColorsResponse,
+  BatchConvertParams,
+  BatchResponse,
+  ColorReplaceResponse,
 } from "./types";
 
 /** 上传图片 + 参数，获取 2D 预览（返回 JSON，含 session_id 和 preview_url） */
@@ -92,6 +95,72 @@ export async function fetchLutColors(
   const response = await apiClient.get<LutColorsResponse>(
     `/lut/${encodeURIComponent(lutName)}/colors`,
     { timeout: 10_000 },
+  );
+  return response.data;
+}
+
+/** 裁剪响应 */
+export interface CropResponse {
+  status: string;
+  message: string;
+  cropped_url: string;
+  width: number;
+  height: number;
+}
+
+/** 发送裁剪坐标到后端，返回裁剪后的图片信息 */
+export async function cropImage(
+  file: File,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): Promise<CropResponse> {
+  const fd = new FormData();
+  fd.append("image", file);
+  fd.append("x", String(Math.round(x)));
+  fd.append("y", String(Math.round(y)));
+  fd.append("width", String(Math.round(width)));
+  fd.append("height", String(Math.round(height)));
+  const response = await apiClient.post<CropResponse>("/convert/crop", fd);
+  return response.data;
+}
+
+/** 批量转换：上传多张图片 + 共享参数，返回批量处理结果 */
+export async function convertBatch(
+  images: File[],
+  params: BatchConvertParams,
+): Promise<BatchResponse> {
+  const fd = new FormData();
+  for (const file of images) {
+    fd.append("images", file);
+  }
+  for (const [key, value] of Object.entries(params)) {
+    fd.append(key, String(value));
+  }
+  const response = await apiClient.post<BatchResponse>(
+    "/convert/batch",
+    fd,
+    { timeout: 0 },
+  );
+  return response.data;
+}
+
+
+/** 替换预览中的单个颜色 */
+export async function replaceColor(
+  sessionId: string,
+  selectedColor: string,
+  replacementColor: string,
+): Promise<ColorReplaceResponse> {
+  const response = await apiClient.post<ColorReplaceResponse>(
+    "/convert/replace-color",
+    {
+      session_id: sessionId,
+      selected_color: selectedColor,
+      replacement_color: replacementColor,
+    },
+    { timeout: 30_000 },
   );
   return response.data;
 }

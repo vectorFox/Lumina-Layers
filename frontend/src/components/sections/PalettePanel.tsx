@@ -114,6 +114,8 @@ export default function PalettePanel() {
   const undoColorRemap = useConverterStore((s) => s.undoColorRemap);
   const clearAllRemaps = useConverterStore((s) => s.clearAllRemaps);
   const heightmap_max_height = useConverterStore((s) => s.heightmap_max_height);
+  const replacePreviewLoading = useConverterStore((s) => s.replacePreviewLoading);
+  const submitReplacePreview = useConverterStore((s) => s.submitReplacePreview);
 
   const hasRemaps = Object.keys(colorRemapMap).length > 0;
   const hasHistory = remapHistory.length > 0;
@@ -130,7 +132,7 @@ export default function PalettePanel() {
         </p>
       ) : (
         <div className="flex flex-col gap-1">
-          {/* Undo / Clear buttons */}
+          {/* Undo / Clear / Apply buttons */}
           <div className="flex gap-2 mb-2">
             <Button
               label="撤销"
@@ -143,6 +145,13 @@ export default function PalettePanel() {
               variant="secondary"
               onClick={clearAllRemaps}
               disabled={!hasRemaps}
+            />
+            <Button
+              label="应用替换到预览"
+              variant="primary"
+              onClick={() => void submitReplacePreview()}
+              disabled={!hasRemaps || replacePreviewLoading}
+              loading={replacePreviewLoading}
             />
           </div>
 

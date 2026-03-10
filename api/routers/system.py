@@ -7,9 +7,11 @@ endpoint (endpoint registered in a later task).
 （端点在后续任务中注册）。
 """
 
+import json
 import os
+from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 import config
 from api.dependencies import get_file_registry, get_session_store
@@ -18,6 +20,10 @@ from api.schemas.system import (
     CacheCleanupDetails,
     ClearCacheResponse,
     ClearCacheResult,
+    SaveSettingsResponse,
+    StatsResponse,
+    UserSettings,
+    UserSettingsResponse,
 )
 from api.session_store import SessionStore
 
@@ -113,4 +119,51 @@ def clear_cache(
             sessions_cleaned=result.sessions_cleaned,
             output_files_cleaned=result.output_files_cleaned,
         ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Settings & Stats endpoints
+# ---------------------------------------------------------------------------
+
+SETTINGS_FILE: Path = Path("user_settings.json")
+
+
+@router.get("/settings")
+def get_settings() -> UserSettingsResponse:
+    """读取 user_settings.json 并返回 UserSettings。文件不存在时返回默认值。"""
+    if not SETTINGS_FILE.exists():
+        return UserSettingsResponse(status="success", settings=UserSettings())
+    try:
+        data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+        return UserSettingsResponse(status="success", settings=UserSettings(**data))
+    except (json.JSONDecodeError, ValueError):
+        return UserSettingsResponse(status="success", settings=UserSettings())
+
+
+@router.post("/settings")
+def save_settings(settings: UserSettings) -> SaveSettingsResponse:
+    """将 UserSettings 写入 user_settings.json。"""
+    try:
+        SETTINGS_FILE.write_text(
+            json.dumps(settings.model_dump(), indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return SaveSettingsResponse(status="success", message="Settings saved")
+    except OSError as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to save settings: {e}"
+        )
+
+
+@router.get("/stats")
+def get_stats() -> StatsResponse:
+    """获取使用统计数据。"""
+    from utils.stats import Stats
+
+    data: dict = Stats.get_all()
+    return StatsResponse(
+        calibrations=data.get("calibrations", 0),
+        extractions=data.get("extractions", 0),
+        conversions=data.get("conversions", 0),
     )

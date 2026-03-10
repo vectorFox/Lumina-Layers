@@ -4,7 +4,7 @@ import {
   ExtractorColorMode as ExtractorColorModeEnum,
   ExtractorPage as ExtractorPageEnum,
 } from "../api/types";
-import { extractColors, manualFixCell, mergeEightColor } from "../api/extractor";
+import { extractColors, manualFixCell, mergeEightColor, mergeFiveColorExtended } from "../api/extractor";
 import { clampValue } from "./converterStore";
 
 // ========== State Interface ==========
@@ -50,6 +50,10 @@ export interface ExtractorState {
   page2Extracted: boolean;
   mergeLoading: boolean;
   mergeError: string | null;
+
+  // 5色扩展双页状态
+  page1Extracted_5c: boolean;
+  page2Extracted_5c: boolean;
 }
 
 // ========== Actions Interface ==========
@@ -101,6 +105,8 @@ const DEFAULT_STATE: ExtractorState = {
   page2Extracted: false,
   mergeLoading: false,
   mergeError: null,
+  page1Extracted_5c: false,
+  page2Extracted_5c: false,
 };
 
 // ========== Store ==========
@@ -159,9 +165,11 @@ export const useExtractorStore = create<ExtractorState & ExtractorActions>(
 
     setColorMode: (mode: ExtractorColorMode) => set({
       color_mode: mode,
-      // Reset 8-color page tracking when switching modes
+      // Reset 8-color and 5-color page tracking when switching modes
       page1Extracted: false,
       page2Extracted: false,
+      page1Extracted_5c: false,
+      page2Extracted_5c: false,
       mergeError: null,
     }),
 
@@ -220,6 +228,14 @@ export const useExtractorStore = create<ExtractorState & ExtractorActions>(
             pageUpdate.page2Extracted = true;
           }
         }
+        // Track 5-Color Extended page extraction status
+        if (state.color_mode === ExtractorColorModeEnum.FIVE_COLOR_EXT) {
+          if (state.page === ExtractorPageEnum.PAGE_1) {
+            pageUpdate.page1Extracted_5c = true;
+          } else {
+            pageUpdate.page2Extracted_5c = true;
+          }
+        }
 
         set({
           session_id: response.session_id,
@@ -272,11 +288,19 @@ export const useExtractorStore = create<ExtractorState & ExtractorActions>(
 
     submitMerge: async () => {
       const state = get();
-      if (!state.page1Extracted || !state.page2Extracted) return;
+      // Determine which page states to check based on color_mode
+      const is5c = state.color_mode === ExtractorColorModeEnum.FIVE_COLOR_EXT;
+      const bothExtracted = is5c
+        ? state.page1Extracted_5c && state.page2Extracted_5c
+        : state.page1Extracted && state.page2Extracted;
+
+      if (!bothExtracted) return;
 
       set({ mergeLoading: true, mergeError: null });
       try {
-        const response = await mergeEightColor();
+        const response = is5c
+          ? await mergeFiveColorExtended()
+          : await mergeEightColor();
         const BASE = "http://localhost:8000";
         set({
           session_id: response.session_id,

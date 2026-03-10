@@ -35,6 +35,8 @@ export default function ExtractorPanel() {
     manualFixError,
     page1Extracted,
     page2Extracted,
+    page1Extracted_5c,
+    page2Extracted_5c,
     mergeLoading,
     mergeError,
     setColorMode,
@@ -50,6 +52,16 @@ export default function ExtractorPanel() {
     submitMerge,
     clearCornerPoints,
   } = useExtractorStore();
+
+  const isMultiPage =
+    color_mode === ExtractorColorMode.EIGHT_COLOR ||
+    color_mode === ExtractorColorMode.FIVE_COLOR_EXT;
+
+  const is5c = color_mode === ExtractorColorMode.FIVE_COLOR_EXT;
+  const p1Done = is5c ? page1Extracted_5c : page1Extracted;
+  const p2Done = is5c ? page2Extracted_5c : page2Extracted;
+  const mergeTitle = is5c ? "5色扩展双页合并" : "8色双页合并";
+  const mergeLabel = is5c ? "合并 5 色 LUT" : "合并 8 色 LUT";
 
   const extractDisabled =
     imageFile === null || corner_points.length < 4 || isLoading;
@@ -69,8 +81,8 @@ export default function ExtractorPanel() {
         />
       </div>
 
-      {/* 页码 - 仅 8-Color Max 模式显示 */}
-      {color_mode === ExtractorColorMode.EIGHT_COLOR && (
+      {/* 页码 - 8-Color Max 和 5-Color Extended 模式显示 */}
+      {isMultiPage && (
         <div data-testid="page-select">
           <Dropdown
             label="页码"
@@ -155,23 +167,23 @@ export default function ExtractorPanel() {
         />
       </div>
 
-      {/* 8色模式：页面提取状态 + 合并按钮 */}
-      {color_mode === ExtractorColorMode.EIGHT_COLOR && (
+      {/* 双页模式：页面提取状态 + 合并按钮 */}
+      {isMultiPage && (
         <div data-testid="merge-section" className="flex flex-col gap-2 border border-gray-700 rounded-md p-3">
-          <span className="text-xs text-gray-400">8色双页合并</span>
+          <span className="text-xs text-gray-400">{mergeTitle}</span>
           <div className="flex gap-2 text-xs">
-            <span className={page1Extracted ? "text-green-400" : "text-gray-500"}>
-              Page 1: {page1Extracted ? "已提取" : "未提取"}
+            <span className={p1Done ? "text-green-400" : "text-gray-500"}>
+              Page 1: {p1Done ? "已提取" : "未提取"}
             </span>
-            <span className={page2Extracted ? "text-green-400" : "text-gray-500"}>
-              Page 2: {page2Extracted ? "已提取" : "未提取"}
+            <span className={p2Done ? "text-green-400" : "text-gray-500"}>
+              Page 2: {p2Done ? "已提取" : "未提取"}
             </span>
           </div>
           <Button
-            label="合并 8 色 LUT"
+            label={mergeLabel}
             variant="primary"
             onClick={() => void submitMerge()}
-            disabled={!page1Extracted || !page2Extracted || mergeLoading}
+            disabled={!p1Done || !p2Done || mergeLoading}
             loading={mergeLoading}
           />
           {mergeError && (

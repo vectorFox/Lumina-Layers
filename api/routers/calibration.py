@@ -12,6 +12,7 @@ from api.file_registry import FileRegistry
 from api.schemas.calibration import CalibrationGenerateRequest
 from api.schemas.responses import CalibrationResponse
 from core.calibration import (
+    generate_5color_extended_batch_zip,
     generate_8color_batch_zip,
     generate_bw_calibration_board,
     generate_calibration_board,
@@ -57,6 +58,8 @@ def calibration_generate(
             )
         elif mode == "8-Color Max":
             path, preview_img, status = generate_8color_batch_zip()
+        elif mode == "5-Color Extended (1444)":
+            path, preview_img, status = generate_5color_extended_batch_zip()
         else:
             raise HTTPException(
                 status_code=422, detail=f"Unsupported color mode: {mode}"

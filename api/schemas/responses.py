@@ -143,3 +143,13 @@ class LutColorsResponse(BaseModel):
     lut_name: str
     total: int
     colors: list[LutColorEntry]
+
+
+class CropResponse(BaseModel):
+    """裁剪响应。"""
+
+    status: str
+    message: str
+    cropped_url: str
+    width: int
+    height: int

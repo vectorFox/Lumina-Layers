@@ -3,7 +3,7 @@ import { useConverterStore } from "../../stores/converterStore";
 import type { LutColorEntry } from "../../api/types";
 import Accordion from "../ui/Accordion";
 
-type HueCategory =
+export type HueCategory =
   | "all"
   | "red"
   | "orange"
@@ -26,7 +26,7 @@ const HUE_FILTERS: { key: HueCategory; label: string; dot: string }[] = [
   { key: "neutral", label: "中性", dot: "#9e9e9e" },
 ];
 
-function classifyHue(r: number, g: number, b: number): HueCategory {
+export function classifyHue(r: number, g: number, b: number): HueCategory {
   const rf = r / 255;
   const gf = g / 255;
   const bf = b / 255;
@@ -54,6 +54,32 @@ function classifyHue(r: number, g: number, b: number): HueCategory {
   if (h < 260) return "blue";
   if (h < 345) return "purple";
   return "neutral";
+}
+
+/**
+ * Check if a LUT color entry matches a search query.
+ * 检查 LUT 颜色条目是否匹配搜索查询。
+ *
+ * Supports hex substring matching and RGB exact matching (e.g. "255,0,0" or "rgb(255,0,0)").
+ * 支持 hex 子串匹配和 RGB 精确匹配（如 "255,0,0" 或 "rgb(255,0,0)"）。
+ */
+export function matchesSearch(entry: LutColorEntry, query: string): boolean {
+  const q = query.toLowerCase().trim();
+  if (!q) return true;
+
+  // Hex match
+  const hexNoHash = entry.hex.replace("#", "").toLowerCase();
+  if (hexNoHash.includes(q.replace("#", ""))) return true;
+
+  // RGB match: extract three numbers from query
+  const rgbMatch = q.match(/(\d{1,3})\s*[,\s]\s*(\d{1,3})\s*[,\s]\s*(\d{1,3})/);
+  if (rgbMatch) {
+    const [, rs, gs, bs] = rgbMatch;
+    const [r, g, b] = entry.rgb;
+    if (r === Number(rs) && g === Number(gs) && b === Number(bs)) return true;
+  }
+
+  return false;
 }
 
 function ColorSwatch({
@@ -169,11 +195,8 @@ export default function LutColorGrid() {
       // Hue filter
       if (hueFilter !== "all" && classifyHue(r, g, b) !== hueFilter) continue;
 
-      // Search filter
-      if (searchText) {
-        const q = searchText.toLowerCase().replace("#", "");
-        if (!hex.replace("#", "").includes(q)) continue;
-      }
+      // Search filter (using matchesSearch pure function)
+      if (searchText && !matchesSearch(c, searchText)) continue;
 
       if (usedHexSet.has(hex)) {
         used.push(c);
@@ -220,7 +243,7 @@ export default function LutColorGrid() {
           {/* Search */}
           <input
             type="text"
-            placeholder="搜索 HEX 颜色..."
+            placeholder="搜索 HEX / RGB 颜色..."
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             className="w-full px-2 py-1 text-xs rounded border border-gray-600 bg-gray-800 text-gray-200 outline-none focus:border-blue-500"
