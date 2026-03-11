@@ -11,8 +11,6 @@ export type WidgetId =
   | 'basic-settings'
   | 'advanced-settings'
   | 'relief-settings'
-  | 'palette-panel'
-  | 'lut-color-grid'
   | 'outline-settings'
   | 'cloisonne-settings'
   | 'coating-settings'
@@ -57,6 +55,10 @@ export interface WidgetStore {
 
   // 堆叠管理
   reorderStack: (edge: 'left' | 'right', orderedIds: WidgetId[]) => void;
+
+  // ColorWorkstation 展开/收起
+  colorWorkstationCollapsed: boolean;
+  toggleColorWorkstation: () => void;
 }
 
 // ===== 吸附计算 =====

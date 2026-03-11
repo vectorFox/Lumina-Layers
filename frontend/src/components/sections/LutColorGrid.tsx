@@ -1,9 +1,11 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useConverterStore } from "../../stores/converterStore";
+import { hexToRgb, sortByColorDistance } from "../../utils/colorUtils";
 import type { LutColorEntry } from "../../api/types";
 
 export type HueCategory =
   | "all"
+  | "fav"
   | "red"
   | "orange"
   | "yellow"
@@ -15,6 +17,7 @@ export type HueCategory =
 
 const HUE_FILTERS: { key: HueCategory; label: string; dot: string }[] = [
   { key: "all", label: "全部", dot: "" },
+  { key: "fav", label: "收藏", dot: "" },
   { key: "red", label: "红", dot: "#e53935" },
   { key: "orange", label: "橙", dot: "#fb8c00" },
   { key: "yellow", label: "黄", dot: "#fdd835" },
@@ -58,58 +61,78 @@ export function classifyHue(r: number, g: number, b: number): HueCategory {
 /**
  * Check if a LUT color entry matches a search query.
  * 检查 LUT 颜色条目是否匹配搜索查询。
- *
- * Supports hex substring matching and RGB exact matching (e.g. "255,0,0" or "rgb(255,0,0)").
- * 支持 hex 子串匹配和 RGB 精确匹配（如 "255,0,0" 或 "rgb(255,0,0)"）。
  */
 export function matchesSearch(entry: LutColorEntry, query: string): boolean {
   const q = query.toLowerCase().trim();
   if (!q) return true;
-
-  // Hex match
   const hexNoHash = entry.hex.replace("#", "").toLowerCase();
   if (hexNoHash.includes(q.replace("#", ""))) return true;
-
-  // RGB match: extract three numbers from query
   const rgbMatch = q.match(/(\d{1,3})\s*[,\s]\s*(\d{1,3})\s*[,\s]\s*(\d{1,3})/);
   if (rgbMatch) {
     const [, rs, gs, bs] = rgbMatch;
     const [r, g, b] = entry.rgb;
     if (r === Number(rs) && g === Number(gs) && b === Number(bs)) return true;
   }
-
   return false;
 }
+
+// ========== Favorites persistence ==========
+
+function loadFavorites(lutKey: string): Set<string> {
+  try {
+    const stored = localStorage.getItem(`lut_favorites_${lutKey}`);
+    return stored ? new Set(JSON.parse(stored) as string[]) : new Set();
+  } catch { return new Set(); }
+}
+
+function saveFavorites(lutKey: string, favs: Set<string>) {
+  try {
+    localStorage.setItem(`lut_favorites_${lutKey}`, JSON.stringify([...favs]));
+  } catch { /* noop */ }
+}
+
+// ========== Compact ColorSwatch ==========
 
 function ColorSwatch({
   entry,
   isTarget,
+  isFav,
   onClick,
+  onDoubleClick,
 }: {
   entry: LutColorEntry;
   isTarget: boolean;
+  isFav: boolean;
   onClick: () => void;
+  onDoubleClick: () => void;
 }) {
   return (
     <button
       type="button"
-      aria-label={`替换为颜色 ${entry.hex}`}
+      aria-label={`颜色 ${entry.hex}${isFav ? " (已收藏)" : ""}`}
       aria-selected={isTarget}
       onClick={onClick}
-      className={`flex flex-col items-center gap-0.5 rounded p-1 cursor-pointer transition-colors hover:bg-gray-700/50 ${
+      onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick(); }}
+      className={`relative flex flex-col items-center rounded cursor-pointer transition-colors hover:bg-gray-700/50 p-0.5 ${
         isTarget ? "ring-2 ring-yellow-500" : ""
       }`}
+      title={`${entry.hex} · 双击${isFav ? "取消" : ""}收藏`}
     >
       <span
-        className="block w-7 h-7 rounded border border-gray-600"
+        className="block w-5 h-5 rounded-sm border border-gray-600"
         style={{ backgroundColor: entry.hex }}
       />
-      <span className="text-[9px] text-gray-400 font-mono leading-tight">
+      {isFav && (
+        <span className="absolute -top-0.5 -right-0.5 text-[8px] leading-none text-yellow-400">★</span>
+      )}
+      <span className="text-[7px] text-gray-500 font-mono leading-none mt-0.5">
         {entry.hex}
       </span>
     </button>
   );
 }
+
+// ========== ColorSection ==========
 
 function ColorSection({
   title,
@@ -117,22 +140,26 @@ function ColorSection({
   colors,
   selectedColor,
   colorRemapMap,
+  favorites,
   onColorClick,
+  onToggleFav,
 }: {
   title: string;
   titleColor: string;
   colors: LutColorEntry[];
   selectedColor: string | null;
   colorRemapMap: Record<string, string>;
+  favorites: Set<string>;
   onColorClick: (hex: string) => void;
+  onToggleFav: (hex: string) => void;
 }) {
   if (colors.length === 0) return null;
   return (
     <div>
-      <p className={`text-[11px] font-semibold mb-1`} style={{ color: titleColor }}>
+      <p className="text-[10px] font-semibold mb-0.5" style={{ color: titleColor }}>
         {title}
       </p>
-      <div className="grid grid-cols-6 gap-1">
+      <div className="grid grid-cols-10 gap-0.5">
         {colors.map((c) => {
           const hexNoHash = c.hex.replace("#", "");
           const isTarget = selectedColor
@@ -143,7 +170,9 @@ function ColorSection({
               key={c.hex}
               entry={c}
               isTarget={isTarget}
+              isFav={favorites.has(c.hex.toLowerCase())}
               onClick={() => onColorClick(c.hex)}
+              onDoubleClick={() => onToggleFav(c.hex)}
             />
           );
         })}
@@ -151,6 +180,8 @@ function ColorSection({
     </div>
   );
 }
+
+// ========== Main Component ==========
 
 export default function LutColorGrid() {
   const palette = useConverterStore((s) => s.palette);
@@ -160,29 +191,37 @@ export default function LutColorGrid() {
   const colorRemapMap = useConverterStore((s) => s.colorRemapMap);
   const lutColors = useConverterStore((s) => s.lutColors);
   const lutColorsLoading = useConverterStore((s) => s.lutColorsLoading);
-  const lut_name = useConverterStore((s) => s.lut_name);
-  const fetchLutColors = useConverterStore((s) => s.fetchLutColors);
-
+  const lutColorsLutName = useConverterStore((s) => s.lutColorsLutName);
   const [hueFilter, setHueFilter] = useState<HueCategory>("all");
   const [searchText, setSearchText] = useState("");
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
 
-  // Fetch LUT colors when lut_name changes
+  // Load favorites when LUT changes
   useEffect(() => {
-    if (lut_name) {
-      fetchLutColors(lut_name);
+    if (lutColorsLutName) {
+      setFavorites(loadFavorites(lutColorsLutName));
+    } else {
+      setFavorites(new Set());
     }
-  }, [lut_name, fetchLutColors]);
+  }, [lutColorsLutName]);
 
-  // Build set of palette hex values (colors used in image)
+  const toggleFav = useCallback((hex: string) => {
+    const key = hex.toLowerCase();
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      if (lutColorsLutName) saveFavorites(lutColorsLutName, next);
+      return next;
+    });
+  }, [lutColorsLutName]);
+
   const usedHexSet = useMemo(() => {
     const s = new Set<string>();
-    for (const e of palette) {
-      s.add(`#${e.matched_hex}`.toLowerCase());
-    }
+    for (const e of palette) s.add(`#${e.matched_hex}`.toLowerCase());
     return s;
   }, [palette]);
 
-  // Classify and filter colors
   const { usedColors, otherColors, visibleCount } = useMemo(() => {
     const used: LutColorEntry[] = [];
     const other: LutColorEntry[] = [];
@@ -191,26 +230,29 @@ export default function LutColorGrid() {
       const hex = c.hex.toLowerCase();
       const [r, g, b] = c.rgb;
 
-      // Hue filter
-      if (hueFilter !== "all" && classifyHue(r, g, b) !== hueFilter) continue;
-
-      // Search filter (using matchesSearch pure function)
-      if (searchText && !matchesSearch(c, searchText)) continue;
-
-      if (usedHexSet.has(hex)) {
-        used.push(c);
+      // Favorites filter
+      if (hueFilter === "fav") {
+        if (!favorites.has(hex)) continue;
+        if (searchText && !matchesSearch(c, searchText)) continue;
       } else {
-        other.push(c);
+        if (hueFilter !== "all" && classifyHue(r, g, b) !== hueFilter) continue;
+        if (searchText && !matchesSearch(c, searchText)) continue;
       }
-    }
 
+      if (usedHexSet.has(hex)) used.push(c);
+      else other.push(c);
+    }
     return { usedColors: used, otherColors: other, visibleCount: used.length + other.length };
-  }, [lutColors, hueFilter, searchText, usedHexSet]);
+  }, [lutColors, hueFilter, searchText, usedHexSet, favorites]);
+
+  const recommendations = useMemo(() => {
+    if (!selectedColor || lutColors.length === 0) return null;
+    return sortByColorDistance(hexToRgb(selectedColor), lutColors, 12);
+  }, [selectedColor, lutColors]);
 
   const handleColorClick = (clickedHex: string) => {
     if (!selectedColor) return;
-    const hexNoHash = clickedHex.replace("#", "");
-    applyColorRemap(selectedColor, hexNoHash);
+    applyColorRemap(selectedColor, clickedHex.replace("#", ""));
     setSelectedColor(null);
   };
 
@@ -219,22 +261,21 @@ export default function LutColorGrid() {
       {lutColorsLoading ? (
         <p className="text-xs text-gray-500 py-2">加载 LUT 颜色中...</p>
       ) : lutColors.length === 0 ? (
-        <p className="text-xs text-gray-500 py-2">
-          请先选择 LUT 以加载可用颜色
-        </p>
+        <p className="text-xs text-gray-500 py-2">请先选择 LUT 以加载可用颜色</p>
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1">
           {/* Status line */}
-          <p className="text-xs text-gray-400">
+          <p className="text-[10px] text-gray-400 leading-tight">
             共 {lutColors.length} 色，显示 {visibleCount} 色
+            {favorites.size > 0 && ` · ★${favorites.size}`}
             {selectedColor && (
               <>
                 {" · 已选中 "}
                 <span
-                  className="inline-block w-3 h-3 rounded-sm border border-gray-600 align-middle"
+                  className="inline-block w-2.5 h-2.5 rounded-sm border border-gray-600 align-middle"
                   style={{ backgroundColor: `#${selectedColor}` }}
                 />
-                <span className="font-mono"> #{selectedColor}</span>
+                <span className="font-mono text-[10px]"> #{selectedColor}</span>
               </>
             )}
           </p>
@@ -245,42 +286,66 @@ export default function LutColorGrid() {
             placeholder="搜索 HEX / RGB 颜色..."
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
-            className="w-full px-2 py-1 text-xs rounded border border-gray-600 bg-gray-800 text-gray-200 outline-none focus:border-blue-500"
+            className="w-full px-2 py-0.5 text-[10px] rounded border border-gray-600 bg-gray-800 text-gray-200 outline-none focus:border-blue-500"
           />
 
           {/* Hue filter bar */}
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-0.5">
             {HUE_FILTERS.map((f) => (
               <button
                 key={f.key}
                 type="button"
                 onClick={() => setHueFilter(f.key)}
-                className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-full border transition-colors ${
+                className={`flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] rounded-full border transition-colors ${
                   hueFilter === f.key
                     ? "bg-gray-200 text-gray-900 border-gray-400"
                     : "bg-gray-800 text-gray-400 border-gray-600 hover:border-gray-400"
                 }`}
               >
-                {f.dot && (
-                  <span
-                    className="inline-block w-2 h-2 rounded-full"
-                    style={{ backgroundColor: f.dot }}
-                  />
-                )}
+                {f.key === "fav" ? (
+                  <span className="text-yellow-400 text-[9px]">★</span>
+                ) : f.dot ? (
+                  <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: f.dot }} />
+                ) : null}
                 {f.label}
               </button>
             ))}
           </div>
 
           {/* Color grid */}
-          <div className="max-h-72 overflow-y-auto flex flex-col gap-3" role="listbox" aria-label="LUT 可用颜色列表">
+          <div className="overflow-y-auto flex flex-col gap-1.5" style={{ maxHeight: '28vh' }} role="listbox" aria-label="LUT 可用颜色列表">
+            {recommendations && recommendations.length > 0 && (
+              <div>
+                <p className="text-[10px] font-semibold mb-0.5" style={{ color: "#f59e0b" }}>
+                  推荐替换色 ({recommendations.length})
+                </p>
+                <div className="grid grid-cols-10 gap-0.5">
+                  {recommendations.map((c) => {
+                    const hexNoHash = c.hex.replace("#", "");
+                    const isTarget = selectedColor ? colorRemapMap[selectedColor] === hexNoHash : false;
+                    return (
+                      <ColorSwatch
+                        key={c.hex}
+                        entry={c}
+                        isTarget={isTarget}
+                        isFav={favorites.has(c.hex.toLowerCase())}
+                        onClick={() => handleColorClick(c.hex)}
+                        onDoubleClick={() => toggleFav(c.hex)}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <ColorSection
               title={`图中使用 (${usedColors.length})`}
               titleColor="#4CAF50"
               colors={usedColors}
               selectedColor={selectedColor}
               colorRemapMap={colorRemapMap}
+              favorites={favorites}
               onColorClick={handleColorClick}
+              onToggleFav={toggleFav}
             />
             <ColorSection
               title={usedColors.length > 0 ? `其他可用 (${otherColors.length})` : `全部可用 (${otherColors.length})`}
@@ -288,10 +353,12 @@ export default function LutColorGrid() {
               colors={otherColors}
               selectedColor={selectedColor}
               colorRemapMap={colorRemapMap}
+              favorites={favorites}
               onColorClick={handleColorClick}
+              onToggleFav={toggleFav}
             />
             {visibleCount === 0 && (
-              <p className="text-xs text-gray-500 py-2">无匹配颜色</p>
+              <p className="text-xs text-gray-500 py-1">无匹配颜色</p>
             )}
           </div>
         </div>

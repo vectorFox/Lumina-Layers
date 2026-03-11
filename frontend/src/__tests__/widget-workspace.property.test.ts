@@ -107,8 +107,8 @@ describe('Widget Workspace Property-Based Tests', () => {
   describe('Property 2: Toggle Collapse Round-Trip', () => {
     const WIDGET_IDS: WidgetId[] = [
       'basic-settings', 'advanced-settings', 'relief-settings',
-      'palette-panel', 'lut-color-grid', 'outline-settings',
-      'cloisonne-settings', 'coating-settings', 'keychain-loop', 'action-bar',
+      'outline-settings', 'cloisonne-settings', 'coating-settings',
+      'keychain-loop', 'action-bar',
       'calibration', 'extractor', 'lut-manager', 'five-color',
     ];
 
@@ -141,8 +141,8 @@ describe('Widget Workspace Property-Based Tests', () => {
   describe('Property 4: Stack Layout Non-Overlapping', () => {
     const WIDGET_IDS: WidgetId[] = [
       'basic-settings', 'advanced-settings', 'relief-settings',
-      'palette-panel', 'lut-color-grid', 'outline-settings',
-      'cloisonne-settings', 'coating-settings', 'keychain-loop', 'action-bar',
+      'outline-settings', 'cloisonne-settings', 'coating-settings',
+      'keychain-loop', 'action-bar',
       'calibration', 'extractor', 'lut-manager', 'five-color',
     ];
 
@@ -150,10 +150,10 @@ describe('Widget Workspace Property-Based Tests', () => {
       // **Validates: Requirements 3.3, 4.5**
       fc.assert(
         fc.property(
-          fc.integer({ min: 1, max: 14 }),  // number of widgets
+          fc.integer({ min: 1, max: 12 }),  // number of widgets
           fc.constantFrom('left' as const, 'right' as const),
           fc.integer({ min: 500, max: 5000 }), // containerWidth
-          fc.array(fc.boolean(), { minLength: 14, maxLength: 14 }), // collapsed states
+          fc.array(fc.boolean(), { minLength: 12, maxLength: 12 }), // collapsed states
           (count, edge, containerWidth, collapsedStates) => {
             const widgets: WidgetLayoutState[] = WIDGET_IDS.slice(0, count).map((id, i) => ({
               id,
@@ -207,8 +207,6 @@ describe('Widget Workspace Property-Based Tests', () => {
             'basic-settings': widgetStateArb,
             'advanced-settings': widgetStateArb,
             'relief-settings': widgetStateArb,
-            'palette-panel': widgetStateArb,
-            'lut-color-grid': widgetStateArb,
             'outline-settings': widgetStateArb,
             'cloisonne-settings': widgetStateArb,
             'coating-settings': widgetStateArb,
@@ -236,8 +234,8 @@ describe('Widget Workspace Property-Based Tests', () => {
   describe('Property 7: moveWidget Position Update', () => {
     const WIDGET_IDS: WidgetId[] = [
       'basic-settings', 'advanced-settings', 'relief-settings',
-      'palette-panel', 'lut-color-grid', 'outline-settings',
-      'cloisonne-settings', 'coating-settings', 'keychain-loop', 'action-bar',
+      'outline-settings', 'cloisonne-settings', 'coating-settings',
+      'keychain-loop', 'action-bar',
       'calibration', 'extractor', 'lut-manager', 'five-color',
     ];
 
@@ -272,8 +270,8 @@ describe('Widget Workspace Property-Based Tests', () => {
   describe('Property 8: Auto-Arrange Completeness', () => {
     const WIDGET_IDS: WidgetId[] = [
       'basic-settings', 'advanced-settings', 'relief-settings',
-      'palette-panel', 'lut-color-grid', 'outline-settings',
-      'cloisonne-settings', 'coating-settings', 'keychain-loop', 'action-bar',
+      'outline-settings', 'cloisonne-settings', 'coating-settings',
+      'keychain-loop', 'action-bar',
       'calibration', 'extractor', 'lut-manager', 'five-color',
     ];
 
@@ -281,8 +279,8 @@ describe('Widget Workspace Property-Based Tests', () => {
       // **Validates: Requirements 3.6**
       fc.assert(
         fc.property(
-          fc.array(fc.boolean(), { minLength: 14, maxLength: 14 }), // which widgets are free-floating
-          fc.array(fc.boolean(), { minLength: 14, maxLength: 14 }), // which widgets are visible
+          fc.array(fc.boolean(), { minLength: 12, maxLength: 12 }), // which widgets are free-floating
+          fc.array(fc.boolean(), { minLength: 12, maxLength: 12 }), // which widgets are visible
           (freeFloating, visibleStates) => {
             // Build initial state with some widgets free-floating
             const widgets = { ...DEFAULT_LAYOUT };
@@ -318,8 +316,8 @@ describe('Widget Workspace Property-Based Tests', () => {
   describe('Property 6: Layout-Domain Isolation', () => {
     const WIDGET_IDS: WidgetId[] = [
       'basic-settings', 'advanced-settings', 'relief-settings',
-      'palette-panel', 'lut-color-grid', 'outline-settings',
-      'cloisonne-settings', 'coating-settings', 'keychain-loop', 'action-bar',
+      'outline-settings', 'cloisonne-settings', 'coating-settings',
+      'keychain-loop', 'action-bar',
       'calibration', 'extractor', 'lut-manager', 'five-color',
     ];
 

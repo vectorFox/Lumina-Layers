@@ -270,24 +270,43 @@ function InteractiveModelViewer({
     return () => canvas.removeEventListener("pointerdown", handlePointerDown);
   }, [threeCtx.gl, handlePointerDown]);
 
-  // Imperative Three.js mutations: color remap, highlight, and relief scaling.
-  // Runs on every prop change without triggering React re-renders of the Canvas.
+  // Edge outline LineSegments for selected color regions.
+  const outlineObjsRef = useRef<THREE.LineSegments[]>([]);
+  const outlineGroupRef = useRef<THREE.Group>(new THREE.Group());
+  outlineGroupRef.current.name = "__outlineGroup";
+
+  // Imperative Three.js mutations: color remap, contour-based outline, relief scaling.
+  // Colors stay fully visible — contour lines from backend OpenCV mark the selected region.
+  const colorContours = useConverterStore((s) => s.colorContours);
+
   useEffect(() => {
+    // Clear previous outlines
+    const outlineGroup = outlineGroupRef.current;
+    for (const obj of outlineObjsRef.current) {
+      outlineGroup.remove(obj);
+      obj.geometry.dispose();
+      (obj.material as THREE.Material).dispose();
+    }
+    outlineObjsRef.current = [];
+
+    if (groupRef.current && !groupRef.current.children.includes(outlineGroup)) {
+      groupRef.current.add(outlineGroup);
+    }
+
     for (const mesh of colorMeshes) {
       const origHex = extractHexFromMeshName(mesh.name);
       const mat = mesh.material as THREE.MeshStandardMaterial;
 
-      // Color replacement
+      // Color replacement — always apply
       const remappedHex = colorRemapMap[origHex] || origHex;
       mat.color.set(`#${remappedHex}`);
 
-      // Highlight selected color mesh
-      const isSelected = selectedColor === origHex;
-      mat.emissive.set(isSelected ? 0x333333 : 0x000000);
-      mat.opacity = selectedColor && !isSelected ? 0.4 : 1.0;
-      mat.transparent = selectedColor !== null && !isSelected;
+      // Keep all meshes fully opaque and unchanged
+      mat.emissive.set(0x000000);
+      mat.opacity = 1.0;
+      mat.transparent = false;
 
-      // Height scaling (relief mode only)
+      // Height scaling (relief mode)
       if (enableRelief && baseHeight > 0) {
         const heightMm = colorHeightMap[origHex] ?? baseHeight;
         mesh.scale.z = heightMm / baseHeight;
@@ -295,7 +314,56 @@ function InteractiveModelViewer({
         mesh.scale.z = 1.0;
       }
     }
-  }, [colorMeshes, colorRemapMap, colorHeightMap, selectedColor, enableRelief, baseHeight]);
+
+    // Draw contour outline for selected color using backend-computed contours.
+    // Contours are in world coordinates (mm) with origin at bottom-left of image.
+    // The GLB model is centered at origin, so we offset contours by modelBounds.min.
+    if (selectedColor && colorContours[selectedColor] && modelBounds) {
+      const polygons = colorContours[selectedColor];
+      const topZ = modelBounds.maxZ + 0.1;
+      const offsetX = modelBounds.minX;
+      const offsetY = modelBounds.minY;
+
+      for (const polygon of polygons) {
+        if (polygon.length < 3) continue;
+        const verts: number[] = [];
+        for (let i = 0; i < polygon.length; i++) {
+          const [x0, y0] = polygon[i];
+          const [x1, y1] = polygon[(i + 1) % polygon.length];
+          verts.push(
+            x0 + offsetX, y0 + offsetY, topZ,
+            x1 + offsetX, y1 + offsetY, topZ,
+          );
+        }
+
+        const lineGeo = new THREE.BufferGeometry();
+        lineGeo.setAttribute(
+          "position",
+          new THREE.Float32BufferAttribute(verts, 3),
+        );
+        const lineMat = new THREE.LineBasicMaterial({
+          color: 0x00eeff,
+          linewidth: 2,
+          depthTest: false,
+        });
+        const line = new THREE.LineSegments(lineGeo, lineMat);
+        line.renderOrder = 999;
+        outlineGroup.add(line);
+        outlineObjsRef.current.push(line);
+      }
+    }
+  }, [colorMeshes, colorRemapMap, colorHeightMap, selectedColor, enableRelief, baseHeight, colorContours, modelBounds]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      for (const obj of outlineObjsRef.current) {
+        obj.geometry.dispose();
+        (obj.material as THREE.Material).dispose();
+      }
+      outlineObjsRef.current = [];
+    };
+  }, []);
 
   return (
     <group ref={groupRef} scale={[scaleX, scaleY, 1]}>

@@ -24,14 +24,12 @@ import type {
 } from '@dnd-kit/core';
 import { useWidgetStore, WIDGET_REGISTRY, TAB_WIDGET_MAP } from '../../stores/widgetStore';
 import { useSettingsStore } from '../../stores/settingsStore';
-import { computeSnap, computeStackPositions, WIDGET_WIDTH, COLLAPSED_HEIGHT } from '../../utils/widgetUtils';
+import { computeSnap, computeStackPositions, WIDGET_WIDTH, COLLAPSED_HEIGHT, EXPANDED_HEIGHT, STACK_GAP } from '../../utils/widgetUtils';
 import { WidgetPanel } from './WidgetPanel';
 import { SnapGuides } from './SnapGuides';
 import BasicSettingsWidgetContent from './BasicSettingsWidgetContent';
 import AdvancedSettingsWidgetContent from './AdvancedSettingsWidgetContent';
 import ReliefSettingsWidgetContent from './ReliefSettingsWidgetContent';
-import PalettePanelWidgetContent from './PalettePanelWidgetContent';
-import LutColorGridWidgetContent from './LutColorGridWidgetContent';
 import OutlineSettingsWidgetContent from './OutlineSettingsWidgetContent';
 import CloisonneSettingsWidgetContent from './CloisonneSettingsWidgetContent';
 import CoatingSettingsWidgetContent from './CoatingSettingsWidgetContent';
@@ -41,7 +39,9 @@ import CalibrationWidgetContent from './CalibrationWidgetContent';
 import ExtractorWidgetContent from './ExtractorWidgetContent';
 import LutManagerWidgetContent from './LutManagerWidgetContent';
 import FiveColorWidgetContent from './FiveColorWidgetContent';
+import ColorWorkstation from './ColorWorkstation';
 import { useConverterDataInit } from '../../hooks/useConverterDataInit';
+import { useI18n } from '../../i18n/context';
 import type { WidgetId } from '../../types/widget';
 import type { ReactNode, ComponentType } from 'react';
 
@@ -53,8 +53,6 @@ const WIDGET_CONTENT_MAP: Record<WidgetId, ComponentType> = {
   'basic-settings': BasicSettingsWidgetContent,
   'advanced-settings': AdvancedSettingsWidgetContent,
   'relief-settings': ReliefSettingsWidgetContent,
-  'palette-panel': PalettePanelWidgetContent,
-  'lut-color-grid': LutColorGridWidgetContent,
   'outline-settings': OutlineSettingsWidgetContent,
   'cloisonne-settings': CloisonneSettingsWidgetContent,
   'coating-settings': CoatingSettingsWidgetContent,
@@ -71,8 +69,10 @@ interface WidgetWorkspaceProps {
 }
 
 export function WidgetWorkspace({ children }: WidgetWorkspaceProps) {
+  const { t } = useI18n();
   const moveWidget = useWidgetStore((s) => s.moveWidget);
   const snapToEdge = useWidgetStore((s) => s.snapToEdge);
+  const reorderStack = useWidgetStore((s) => s.reorderStack);
   const setDragging = useWidgetStore((s) => s.setDragging);
   const isDragging = useWidgetStore((s) => s.isDragging);
   const activeWidgetId = useWidgetStore((s) => s.activeWidgetId);
@@ -236,7 +236,8 @@ export function WidgetWorkspace({ children }: WidgetWorkspaceProps) {
     (event: DragEndEvent) => {
       const { active, delta } = event;
       const id = active.id as WidgetId;
-      const widget = useWidgetStore.getState().widgets[id];
+      const state = useWidgetStore.getState();
+      const widget = state.widgets[id];
       const container = containerRef.current;
 
       if (!widget || !container) {
@@ -258,9 +259,53 @@ export function WidgetWorkspace({ children }: WidgetWorkspaceProps) {
         newY
       );
 
-      // Always snap to nearest edge — widgets are never free-floating
-      moveWidget(id, snap.snappedPosition);
-      snapToEdge(id, snap.edge!);
+      const targetEdge = snap.edge!;
+
+      // First, move widget to the actual drop position (position + delta).
+      // This gives framer-motion the correct starting point for the snap
+      // animation. recalculateStacks (next frame) will update to the final
+      // stacked position, producing a smooth visual transition.
+      moveWidget(id, { x: newX, y: newY });
+      snapToEdge(id, targetEdge);
+
+      // Determine correct insertion position based on drop Y coordinate.
+      // Get all sibling widgets on the target edge (same tab, excluding self),
+      // sorted by their current stackOrder, then find where the dragged
+      // widget should be inserted based on the drop Y position.
+      const freshState = useWidgetStore.getState();
+      const currentTabIds = TAB_WIDGET_MAP[freshState.activeTab];
+      const siblings = currentTabIds
+        .map((wid) => freshState.widgets[wid])
+        .filter((w) => w.snapEdge === targetEdge && w.visible && w.id !== id)
+        .sort((a, b) => a.stackOrder - b.stackOrder);
+
+      // Build ordered ID list with the dragged widget inserted at the
+      // correct position based on drop Y vs each sibling's midpoint.
+      const dropY = Math.max(0, newY);
+      const orderedIds: WidgetId[] = [];
+      let inserted = false;
+
+      // Accumulate Y to find each sibling's vertical midpoint in the stack
+      let accY = STACK_GAP;
+      for (const sibling of siblings) {
+        const h = sibling.collapsed
+          ? COLLAPSED_HEIGHT
+          : (sibling.expandedHeight ?? EXPANDED_HEIGHT);
+        const midpoint = accY + h / 2;
+
+        if (!inserted && dropY < midpoint) {
+          orderedIds.push(id);
+          inserted = true;
+        }
+        orderedIds.push(sibling.id);
+        accY += h + STACK_GAP;
+      }
+
+      if (!inserted) {
+        orderedIds.push(id);
+      }
+
+      reorderStack(targetEdge, orderedIds);
 
       // Reset isDraggingRef BEFORE scheduling recalculateStacks so the
       // ResizeObserver guard won't block the recalculation.
@@ -270,7 +315,7 @@ export function WidgetWorkspace({ children }: WidgetWorkspaceProps) {
       setDragging(false);
       dragPositionRef.current = null;
     },
-    [moveWidget, snapToEdge, setDragging, recalculateStacks]
+    [moveWidget, snapToEdge, reorderStack, setDragging, recalculateStacks]
   );
 
   const handleDragCancel = useCallback(
@@ -283,56 +328,60 @@ export function WidgetWorkspace({ children }: WidgetWorkspaceProps) {
   );
 
   return (
-    <DndContext
-      sensors={sensors}
-      onDragStart={handleDragStart}
-      onDragMove={handleDragMove}
-      onDragEnd={handleDragEnd}
-      onDragCancel={handleDragCancel}
-    >
-      <div
-        ref={containerRef}
-        className="relative w-full h-full overflow-hidden"
-        style={{ pointerEvents: isDragging ? 'all' : undefined }}
+    <>
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragMove={handleDragMove}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
       >
-        {/* Center Canvas (Three.js / Extractor) — z-10 */}
-        <div className="absolute inset-0 z-10 flex flex-col" style={{ pointerEvents: 'auto' }}>
-          {children}
-        </div>
+        <div
+          ref={containerRef}
+          className="relative w-full h-full overflow-hidden"
+          style={{ pointerEvents: isDragging ? 'all' : undefined }}
+        >
+          {/* Center Canvas (Three.js / Extractor) — z-10 */}
+          <div className="absolute inset-0 z-10 flex flex-col" style={{ pointerEvents: 'auto' }}>
+            {children}
+          </div>
 
-        {/* Snap Guides — z-20 */}
-        <SnapGuides
-          isDraggingRef={isDraggingRef}
-          dragPositionRef={dragPositionRef}
-          containerRef={containerRef}
-        />
+          {/* Snap Guides — z-20 */}
+          <SnapGuides
+            isDraggingRef={isDraggingRef}
+            dragPositionRef={dragPositionRef}
+            containerRef={containerRef}
+          />
 
-        {/* Widget Layer — z-30 */}
-        <div className="absolute inset-0 z-30" style={{ pointerEvents: 'none' }}>
-          {activeRegistry.map((config) => {
-            const ContentComponent = WIDGET_CONTENT_MAP[config.id];
-            return (
-              <WidgetPanel key={config.id} widgetId={config.id} titleKey={config.titleKey}>
-                <ContentComponent />
-              </WidgetPanel>
-            );
-          })}
-        </div>
+          {/* Widget Layer — z-30 */}
+          <div className="absolute inset-0 z-30" style={{ pointerEvents: 'none' }}>
+            {activeRegistry.map((config) => {
+              const ContentComponent = WIDGET_CONTENT_MAP[config.id];
+              return (
+                <WidgetPanel key={config.id} widgetId={config.id} titleKey={config.titleKey}>
+                  <ContentComponent />
+                </WidgetPanel>
+              );
+            })}
+          </div>
 
-        {/* DragOverlay — z-40 */}
-        <DragOverlay>
-          {activeWidgetId ? (
-            <div
-              className="z-40 rounded-xl shadow-2xl border border-white/30 backdrop-blur-xl bg-white/50 dark:bg-gray-900/50 opacity-80"
-              style={{ width: WIDGET_WIDTH, height: COLLAPSED_HEIGHT }}
-            >
-              <div className="px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-300">
-                {activeWidgetId}
+          {/* DragOverlay — z-40 */}
+          <DragOverlay>
+            {activeWidgetId ? (
+              <div
+                className="z-40 rounded-xl shadow-2xl border border-white/30 backdrop-blur-xl bg-white/50 dark:bg-gray-900/50 opacity-80"
+                style={{ width: WIDGET_WIDTH, height: COLLAPSED_HEIGHT }}
+              >
+                <div className="px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-300">
+                  {t(WIDGET_REGISTRY.find((w) => w.id === activeWidgetId)?.titleKey ?? activeWidgetId)}
+                </div>
               </div>
-            </div>
-          ) : null}
-        </DragOverlay>
-      </div>
-    </DndContext>
+            ) : null}
+          </DragOverlay>
+        </div>
+      </DndContext>
+      {/* ColorWorkstation — fixed bottom center, outside DnD system (z-35) */}
+      <ColorWorkstation />
+    </>
   );
 }

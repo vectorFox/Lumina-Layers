@@ -1137,6 +1137,10 @@ export const translations: Record<string, Record<"zh" | "en", string>> = {
     zh: "操作栏",
     en: "Actions",
   },
+  "widget.colorWorkstation": {
+    zh: "颜色工作站",
+    en: "Color Workstation",
+  },
 
   // ==================== TAB Navigation Titles ====================
   "tab.converter": {

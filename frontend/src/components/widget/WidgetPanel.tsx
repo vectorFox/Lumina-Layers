@@ -124,37 +124,58 @@ export const WidgetPanel = React.memo(function WidgetPanel({
   const isBeingDragged = activeWidgetId === widgetId && !!transform;
   const targetHeight = widget.collapsed ? COLLAPSED_HEIGHT : widget.expandedHeight;
 
-  // During drag, pin left/top in style so dnd-kit transform works correctly.
-  // When not dragging, framer-motion animates left/top for smooth repositioning.
+  // Always set left/top in style so framer-motion has a stable base.
+  // During drag: dnd-kit transform is layered on top via CSS transform.
+  // After drag: framer-motion animates left/top from current to target.
+  //
+  // IMPORTANT: We do NOT set left/top in style — framer-motion owns them
+  // exclusively via `animate`. During drag we still feed the visual position
+  // (base + delta) into animate so framer-motion tracks the value; this way,
+  // when drag ends and the target switches to the stacked position, framer
+  // interpolates smoothly from the drop point instead of jumping from 0.
   const style: React.CSSProperties = {
     position: 'absolute',
     width: WIDGET_WIDTH,
     pointerEvents: 'auto',
     zIndex: isBeingDragged ? 50 : 30,
     ...(isBeingDragged
-      ? {
-          left: widget.position.x,
-          top: widget.position.y,
-          transform: `translate(${transform.x}px, ${transform.y}px)`,
-        }
+      ? { transform: `translate(${transform.x}px, ${transform.y}px)` }
       : {}),
   };
+
+  // During drag: animate to the base position (visual offset handled by
+  // CSS transform above) with duration 0 so framer-motion tracks the value
+  // without visible animation. After drag: animate to the store position
+  // with the normal transition, producing a smooth snap effect.
+  const animateTarget = isBeingDragged
+    ? {
+        left: widget.position.x,
+        top: widget.position.y,
+        height: targetHeight,
+      }
+    : {
+        left: widget.position.x,
+        top: widget.position.y,
+        height: targetHeight,
+      };
+
+  // During drag, use instant transitions for left/top so the widget
+  // follows the cursor without lag. Normal transitions resume after drop.
+  const transition = isBeingDragged
+    ? {
+        left: { duration: 0 },
+        top: { duration: 0 },
+        height: TRANSITION_CONFIG.height,
+      }
+    : TRANSITION_CONFIG;
 
   return (
       <motion.div
         ref={setNodeRef}
         style={style}
         data-widget-id={widgetId}
-        animate={
-          isBeingDragged
-            ? { height: targetHeight }
-            : {
-                left: widget.position.x,
-                top: widget.position.y,
-                height: targetHeight,
-              }
-        }
-        transition={TRANSITION_CONFIG}
+        animate={animateTarget}
+        transition={transition}
         onAnimationComplete={handleAnimationComplete}
         className={`rounded-xl shadow-lg border border-white/20 dark:border-gray-700/50 overflow-hidden will-change-transform ${
           enableBlur

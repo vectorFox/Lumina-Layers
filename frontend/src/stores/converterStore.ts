@@ -110,6 +110,8 @@ export interface ConverterState {
   colorRemapMap: Record<string, string>;
   remapHistory: Record<string, string>[];
 
+  // 颜色轮廓数据（后端 OpenCV 提取，用于 3D 高亮）
+  colorContours: Record<string, number[][][]>;
   // 浮雕联动
   autoHeightMode: AutoHeightMode;
   heightmapFile: File | null;
@@ -151,6 +153,7 @@ export interface ConverterState {
   // LUT 全部颜色
   lutColors: LutColorEntry[];
   lutColorsLoading: boolean;
+  lutColorsLutName: string;
 
   // 热床尺寸
   bed_label: string;
@@ -165,6 +168,7 @@ export interface ConverterState {
 
   // 颜色替换预览
   replacePreviewLoading: boolean;
+  originalPreviewUrl: string | null;
 
   // 切片集成：3MF 路径
   threemfDiskPath: string | null;
@@ -253,6 +257,7 @@ export interface ConverterActions {
 
   // 颜色替换预览
   submitReplacePreview: () => Promise<void>;
+  submitSingleReplace: (origHex: string, newHex: string) => Promise<void>;
 
   // UI 状态
   setError: (error: string | null) => void;
@@ -319,6 +324,7 @@ const DEFAULT_STATE: ConverterState = {
   palette: [],
   colorRemapMap: {},
   remapHistory: [],
+  colorContours: {},
   autoHeightMode: 'darker-higher' as AutoHeightMode,
   heightmapFile: null,
   heightmapThumbnailUrl: null,
@@ -339,6 +345,7 @@ const DEFAULT_STATE: ConverterState = {
   lutListFull: [],
   lutColors: [],
   lutColorsLoading: false,
+  lutColorsLutName: '',
   bed_label: "256×256 mm",
   bedSizes: [],
   bedSizesLoading: false,
@@ -347,6 +354,7 @@ const DEFAULT_STATE: ConverterState = {
   batchLoading: false,
   batchResult: null,
   replacePreviewLoading: false,
+  originalPreviewUrl: null,
   threemfDiskPath: null,
   downloadUrl: null,
 };
@@ -402,6 +410,10 @@ export const useConverterStore = create<ConverterState & ConverterActions>(
       }
       set(updates);
       try { localStorage.setItem("lumina_lastLut", name); } catch { /* noop */ }
+      // 仅当 LUT 名称实际变化时获取颜色
+      if (name && name !== state.lutColorsLutName) {
+        _get().fetchLutColors(name);
+      }
     },
 
     setTargetWidthMm: (width: number) =>
@@ -537,6 +549,8 @@ export const useConverterStore = create<ConverterState & ConverterActions>(
       // 更新 map
       const newMap = { ...state.colorRemapMap, [origHex]: newHex };
       set({ colorRemapMap: newMap, remapHistory: newHistory, threemfDiskPath: null, downloadUrl: null });
+      // 立即触发后端替换预览
+      _get().submitSingleReplace(origHex, newHex);
     },
 
     undoColorRemap: () => {
@@ -545,10 +559,28 @@ export const useConverterStore = create<ConverterState & ConverterActions>(
       const newHistory = [...state.remapHistory];
       const previousMap = newHistory.pop()!;
       set({ colorRemapMap: previousMap, remapHistory: newHistory, threemfDiskPath: null, downloadUrl: null });
+      // 根据撤销后的 map 状态恢复预览
+      if (Object.keys(previousMap).length === 0) {
+        // map 为空，恢复原始预览
+        const originalUrl = _get().originalPreviewUrl;
+        if (originalUrl) {
+          set({ previewImageUrl: originalUrl });
+        }
+      } else {
+        // map 仍有映射，重新调用后端生成预览
+        _get().submitReplacePreview();
+      }
     },
 
     clearAllRemaps: () => {
-      set({ colorRemapMap: {}, remapHistory: [], threemfDiskPath: null, downloadUrl: null });
+      const originalUrl = _get().originalPreviewUrl;
+      set({
+        colorRemapMap: {},
+        remapHistory: [],
+        threemfDiskPath: null,
+        downloadUrl: null,
+        ...(originalUrl ? { previewImageUrl: originalUrl } : {}),
+      });
     },
 
     // --- 浮雕高度 ---
@@ -656,13 +688,17 @@ export const useConverterStore = create<ConverterState & ConverterActions>(
 
     fetchLutColors: async (lutName: string) => {
       if (!lutName) {
-        set({ lutColors: [] });
+        set({ lutColors: [], lutColorsLutName: '' });
+        return;
+      }
+      // 缓存命中检查：LUT 名称未变且已有数据时跳过请求
+      if (lutName === _get().lutColorsLutName && _get().lutColors.length > 0) {
         return;
       }
       set({ lutColorsLoading: true });
       try {
         const response = await apiFetchLutColors(lutName);
-        set({ lutColors: response.colors, lutColorsLoading: false });
+        set({ lutColors: response.colors, lutColorsLoading: false, lutColorsLutName: lutName });
       } catch (err) {
         set({
           lutColorsLoading: false,
@@ -716,7 +752,9 @@ export const useConverterStore = create<ConverterState & ConverterActions>(
           isLoading: false,
           sessionId: response.session_id,
           previewImageUrl: previewUrl,
+          originalPreviewUrl: previewUrl,
           palette: normalizedPalette,
+          colorContours: response.contours ?? {},
           previewGlbUrl: glbUrl,
           preview_width_mm: state.target_width_mm,
           preview_height_mm: state.target_height_mm,
@@ -930,6 +968,41 @@ export const useConverterStore = create<ConverterState & ConverterActions>(
           batchLoading: false,
           error: err instanceof Error ? err.message : "批量处理失败",
         });
+      }
+    },
+
+    // --- 颜色替换：单次即时替换 ---
+    submitSingleReplace: async (origHex: string, newHex: string) => {
+      const state = _get();
+      if (!state.sessionId) return;
+      set({ replacePreviewLoading: true, error: null });
+      try {
+        const response = await apiReplaceColor(
+          state.sessionId,
+          `#${origHex}`,
+          `#${newHex}`,
+        );
+        set({
+          replacePreviewLoading: false,
+          previewImageUrl: `http://localhost:8000${response.preview_url}`,
+        });
+      } catch (err) {
+        // 回滚 colorRemapMap 到操作前状态
+        const currentHistory = _get().remapHistory;
+        if (currentHistory.length > 0) {
+          const previousMap = currentHistory[currentHistory.length - 1];
+          set({
+            colorRemapMap: previousMap,
+            remapHistory: currentHistory.slice(0, -1),
+            replacePreviewLoading: false,
+            error: err instanceof Error ? err.message : '颜色替换失败',
+          });
+        } else {
+          set({
+            replacePreviewLoading: false,
+            error: err instanceof Error ? err.message : '颜色替换失败',
+          });
+        }
       }
     },
 

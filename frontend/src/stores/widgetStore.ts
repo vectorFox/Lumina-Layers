@@ -18,8 +18,8 @@ import type { WidgetId, WidgetLayoutState, WidgetStore, WidgetConfig, TabId } fr
 export const TAB_WIDGET_MAP: Record<TabId, WidgetId[]> = {
   'converter': [
     'basic-settings', 'advanced-settings', 'relief-settings',
-    'palette-panel', 'lut-color-grid', 'outline-settings',
-    'cloisonne-settings', 'coating-settings', 'keychain-loop', 'action-bar',
+    'outline-settings', 'cloisonne-settings', 'coating-settings',
+    'keychain-loop', 'action-bar',
   ],
   'calibration': ['calibration'],
   'extractor': ['extractor'],
@@ -30,7 +30,7 @@ export const TAB_WIDGET_MAP: Record<TabId, WidgetId[]> = {
 // ===== 默认布局 =====
 
 export const DEFAULT_LAYOUT: Record<WidgetId, WidgetLayoutState> = {
-  // --- Converter 页面：10 个 Widget，左侧吸附，stackOrder 0-9 ---
+  // --- Converter 页面：8 个 Widget，左侧吸附，stackOrder 0-7 ---
   'basic-settings': {
     id: 'basic-settings',
     position: { x: 0, y: 0 },
@@ -58,31 +58,13 @@ export const DEFAULT_LAYOUT: Record<WidgetId, WidgetLayoutState> = {
     stackOrder: 2,
     expandedHeight: EXPANDED_HEIGHT,
   },
-  'palette-panel': {
-    id: 'palette-panel',
-    position: { x: 0, y: 0 },
-    collapsed: true,
-    visible: true,
-    snapEdge: 'left',
-    stackOrder: 3,
-    expandedHeight: EXPANDED_HEIGHT,
-  },
-  'lut-color-grid': {
-    id: 'lut-color-grid',
-    position: { x: 0, y: 0 },
-    collapsed: true,
-    visible: true,
-    snapEdge: 'left',
-    stackOrder: 4,
-    expandedHeight: EXPANDED_HEIGHT,
-  },
   'outline-settings': {
     id: 'outline-settings',
     position: { x: 0, y: 0 },
     collapsed: true,
     visible: true,
     snapEdge: 'left',
-    stackOrder: 5,
+    stackOrder: 3,
     expandedHeight: EXPANDED_HEIGHT,
   },
   'cloisonne-settings': {
@@ -91,7 +73,7 @@ export const DEFAULT_LAYOUT: Record<WidgetId, WidgetLayoutState> = {
     collapsed: true,
     visible: true,
     snapEdge: 'left',
-    stackOrder: 6,
+    stackOrder: 4,
     expandedHeight: EXPANDED_HEIGHT,
   },
   'coating-settings': {
@@ -100,7 +82,7 @@ export const DEFAULT_LAYOUT: Record<WidgetId, WidgetLayoutState> = {
     collapsed: true,
     visible: true,
     snapEdge: 'left',
-    stackOrder: 7,
+    stackOrder: 5,
     expandedHeight: EXPANDED_HEIGHT,
   },
   'keychain-loop': {
@@ -109,7 +91,7 @@ export const DEFAULT_LAYOUT: Record<WidgetId, WidgetLayoutState> = {
     collapsed: true,
     visible: true,
     snapEdge: 'left',
-    stackOrder: 8,
+    stackOrder: 6,
     expandedHeight: EXPANDED_HEIGHT,
   },
   'action-bar': {
@@ -118,7 +100,7 @@ export const DEFAULT_LAYOUT: Record<WidgetId, WidgetLayoutState> = {
     collapsed: false,
     visible: true,
     snapEdge: 'left',
-    stackOrder: 9,
+    stackOrder: 7,
     expandedHeight: EXPANDED_HEIGHT,
   },
   // --- 其他 4 个页面：各 1 个 Widget，左侧吸附，stackOrder 0 ---
@@ -167,8 +149,6 @@ export const WIDGET_REGISTRY: Omit<WidgetConfig, 'component'>[] = [
   { id: 'basic-settings', titleKey: 'widget.basicSettings', icon: 'settings', defaultWidth: 350, minWidth: 300 },
   { id: 'advanced-settings', titleKey: 'widget.advancedSettings', icon: 'sliders', defaultWidth: 350, minWidth: 300 },
   { id: 'relief-settings', titleKey: 'widget.reliefSettings', icon: 'layers', defaultWidth: 350, minWidth: 300 },
-  { id: 'palette-panel', titleKey: 'widget.palettePanel', icon: 'palette', defaultWidth: 350, minWidth: 300 },
-  { id: 'lut-color-grid', titleKey: 'widget.lutColorGrid', icon: 'grid', defaultWidth: 350, minWidth: 300 },
   { id: 'outline-settings', titleKey: 'widget.outlineSettings', icon: 'pen-tool', defaultWidth: 350, minWidth: 300 },
   { id: 'cloisonne-settings', titleKey: 'widget.cloisonneSettings', icon: 'hexagon', defaultWidth: 350, minWidth: 300 },
   { id: 'coating-settings', titleKey: 'widget.coatingSettings', icon: 'droplet', defaultWidth: 350, minWidth: 300 },
@@ -190,6 +170,7 @@ export const useWidgetStore = create<WidgetStore>()(
       isDragging: false,
       activeWidgetId: null,
       activeTab: 'converter' as TabId,
+      colorWorkstationCollapsed: true,
 
       /**
        * Set the active TAB page.
@@ -367,17 +348,46 @@ export const useWidgetStore = create<WidgetStore>()(
           return { widgets: updated };
         });
       },
+
+      /**
+       * Toggle ColorWorkstation collapsed state.
+       * 切换 ColorWorkstation 展开/收起状态。
+       */
+      toggleColorWorkstation: () => {
+        set((state) => ({ colorWorkstationCollapsed: !state.colorWorkstationCollapsed }));
+      },
     }),
     {
       name: 'lumina-widget-layout',
-      version: 3,
+      version: 4,
       migrate: (persistedState, version) => {
         if (version < 3) {
           return { widgets: { ...DEFAULT_LAYOUT }, activeTab: 'converter' };
         }
+        if (version === 3) {
+          const state = persistedState as any;
+          const widgets = { ...state.widgets };
+          delete widgets['palette-panel'];
+          delete widgets['lut-color-grid'];
+          // Recalculate stackOrder for converter widgets on left edge
+          const converterIds = TAB_WIDGET_MAP.converter;
+          const leftConverterWidgets = converterIds
+            .filter(id => widgets[id]?.snapEdge === 'left')
+            .sort((a, b) => (widgets[a]?.stackOrder ?? 0) - (widgets[b]?.stackOrder ?? 0));
+          leftConverterWidgets.forEach((id, index) => {
+            if (widgets[id]) {
+              widgets[id] = { ...widgets[id], stackOrder: index };
+            }
+          });
+          return {
+            ...state,
+            widgets,
+            colorWorkstationCollapsed: true,
+          };
+        }
         return persistedState as WidgetStore;
       },
-      partialize: (state) => ({ widgets: state.widgets, activeTab: state.activeTab }),
+      partialize: (state) => ({ widgets: state.widgets, activeTab: state.activeTab, colorWorkstationCollapsed: state.colorWorkstationCollapsed }),
     }
   )
 );

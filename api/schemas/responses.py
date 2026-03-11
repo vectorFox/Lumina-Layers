@@ -29,6 +29,7 @@ class PreviewResponse(BaseModel):
     preview_glb_url: Optional[str] = None
     palette: list[dict]
     dimensions: dict
+    contours: Optional[dict[str, list[list[list[float]]]]] = None
 
 
 class ColorReplaceResponse(BaseModel):

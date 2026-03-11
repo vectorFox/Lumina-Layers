@@ -2730,7 +2730,45 @@ def generate_segmented_glb(cache: dict, max_meshes: int = 64) -> Optional[str]:
             return None
 
         # ------------------------------------------------------------------
-        # 5. Export GLB
+        # 5. Extract 2D contours for each color (for frontend outline rendering)
+        # ------------------------------------------------------------------
+        contours_data: dict[str, list[list[list[float]]]] = {}
+        for color_rgb in unique_colors:
+            r, g, b = int(color_rgb[0]), int(color_rgb[1]), int(color_rgb[2])
+            hex_name = f"{r:02x}{g:02x}{b:02x}"
+
+            color_match = np.all(matched_rgb == color_rgb, axis=2) & mask_solid
+            mask_u8 = color_match.astype(np.uint8) * 255
+
+            cv_contours, _ = cv2.findContours(mask_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if not cv_contours:
+                continue
+
+            color_contour_list: list[list[list[float]]] = []
+            for cnt in cv_contours:
+                if len(cnt) < 3:
+                    continue
+                # Convert pixel coords to world coords (mm)
+                # OpenCV contour: (N, 1, 2) with [x_px, y_px]
+                # World: x_mm = x_px * pixel_scale, y_mm = (height - y_px) * pixel_scale
+                pts = cnt.squeeze(1).astype(float)  # (N, 2)
+                world_pts: list[list[float]] = []
+                for px, py in pts:
+                    world_pts.append([
+                        float(px * pixel_scale),
+                        float((height - py) * pixel_scale),
+                    ])
+                color_contour_list.append(world_pts)
+
+            if color_contour_list:
+                contours_data[hex_name] = color_contour_list
+
+        # Store contours in cache for API to return
+        cache['color_contours'] = contours_data
+        print(f"[SEGMENTED_GLB] Extracted contours for {len(contours_data)} colors")
+
+        # ------------------------------------------------------------------
+        # 6. Export GLB
         # ------------------------------------------------------------------
         glb_path = os.path.join(OUTPUT_DIR, "segmented_preview.glb")
         scene.export(glb_path)

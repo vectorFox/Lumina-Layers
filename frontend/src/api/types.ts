@@ -101,6 +101,7 @@ export interface PreviewResponse {
   preview_glb_url: string | null;  // GLB 3D 预览 URL
   palette: PaletteEntry[];
   dimensions: { width: number; height: number };
+  contours?: Record<string, number[][][]> | null;  // hex -> list of contour polygons (world coords mm)
 }
 
 /** 生成接口响应，包含下载 URL 和可选的 3D 预览 URL */

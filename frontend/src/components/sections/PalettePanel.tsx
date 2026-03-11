@@ -99,6 +99,43 @@ function PaletteItem({
   );
 }
 
+// ========== ColorBlock ==========
+
+interface ColorBlockProps {
+  label: string;
+  hex: string;
+}
+
+function ColorBlock({ label, hex }: ColorBlockProps) {
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <span className="text-[10px] text-gray-400">{label}</span>
+      <span
+        className="inline-block w-10 h-10 rounded border border-gray-600"
+        style={{ backgroundColor: `#${hex}` }}
+      />
+      <span className="text-[10px] text-gray-300 font-mono">#{hex}</span>
+    </div>
+  );
+}
+
+// ========== SelectedColorDetail ==========
+
+interface SelectedColorDetailProps {
+  entry: PaletteEntry;
+  remappedHex?: string;
+}
+
+function SelectedColorDetail({ entry, remappedHex }: SelectedColorDetailProps) {
+  return (
+    <div className="flex gap-4 items-start py-2 px-3 bg-gray-800/40 rounded-lg mb-2">
+      <ColorBlock label="量化色" hex={entry.quantized_hex} />
+      <ColorBlock label="匹配色" hex={entry.matched_hex} />
+      {remappedHex && <ColorBlock label="替换色" hex={remappedHex} />}
+    </div>
+  );
+}
+
 // ========== PalettePanel ==========
 
 export default function PalettePanel() {
@@ -113,8 +150,6 @@ export default function PalettePanel() {
   const undoColorRemap = useConverterStore((s) => s.undoColorRemap);
   const clearAllRemaps = useConverterStore((s) => s.clearAllRemaps);
   const heightmap_max_height = useConverterStore((s) => s.heightmap_max_height);
-  const replacePreviewLoading = useConverterStore((s) => s.replacePreviewLoading);
-  const submitReplacePreview = useConverterStore((s) => s.submitReplacePreview);
 
   const hasRemaps = Object.keys(colorRemapMap).length > 0;
   const hasHistory = remapHistory.length > 0;
@@ -131,7 +166,21 @@ export default function PalettePanel() {
         </p>
       ) : (
         <div className="flex flex-col gap-1">
-          {/* Undo / Clear / Apply buttons */}
+          {/* Selected color detail */}
+          {selectedColor && (() => {
+            const selectedEntry = palette.find(
+              (e) => e.matched_hex === selectedColor
+            );
+            if (!selectedEntry) return null;
+            return (
+              <SelectedColorDetail
+                entry={selectedEntry}
+                remappedHex={colorRemapMap[selectedColor]}
+              />
+            );
+          })()}
+
+          {/* Undo / Clear buttons */}
           <div className="flex gap-2 mb-2">
             <Button
               label="撤销"
@@ -144,13 +193,6 @@ export default function PalettePanel() {
               variant="secondary"
               onClick={clearAllRemaps}
               disabled={!hasRemaps}
-            />
-            <Button
-              label="应用替换到预览"
-              variant="primary"
-              onClick={() => void submitReplacePreview()}
-              disabled={!hasRemaps || replacePreviewLoading}
-              loading={replacePreviewLoading}
             />
           </div>
 
