@@ -180,6 +180,11 @@ export interface ConverterState {
   // 切片集成：3MF 路径
   threemfDiskPath: string | null;
   downloadUrl: string | null;
+
+  // 分层预览
+  layerImages: { layer_index: number; name: string; url: string }[];
+  layerImagesLoading: boolean;
+  layerImagesOpen: boolean;
 }
 
 // ========== Actions Interface ==========
@@ -278,6 +283,10 @@ export interface ConverterActions {
   // UI 状态
   setError: (error: string | null) => void;
   clearError: () => void;
+
+  // 分层预览
+  fetchLayerImages: () => Promise<void>;
+  setLayerImagesOpen: (open: boolean) => void;
 }
 
 // ========== localStorage Helpers ==========
@@ -373,6 +382,9 @@ const DEFAULT_STATE: ConverterState = {
   originalPreviewUrl: null,
   threemfDiskPath: null,
   downloadUrl: null,
+  layerImages: [],
+  layerImagesLoading: false,
+  layerImagesOpen: false,
 };
 
 // ========== Preview AbortController ==========
@@ -1184,5 +1196,21 @@ export const useConverterStore = create<ConverterState & ConverterActions>(
     // --- UI 状态 ---
     setError: (error: string | null) => set({ error }),
     clearError: () => set({ error: null }),
+
+    // --- 分层预览 ---
+    fetchLayerImages: async () => {
+      const { sessionId } = _get();
+      if (!sessionId) return;
+      set({ layerImagesLoading: true });
+      try {
+        const { fetchLayerImages: apiFetch } = await import("../api/converter");
+        const res = await apiFetch(sessionId);
+        set({ layerImages: res.layers, layerImagesLoading: false, layerImagesOpen: true });
+      } catch (e) {
+        console.error("fetchLayerImages failed:", e);
+        set({ layerImagesLoading: false });
+      }
+    },
+    setLayerImagesOpen: (open: boolean) => set({ layerImagesOpen: open }),
   }),
 );

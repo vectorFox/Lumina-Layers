@@ -1701,6 +1701,34 @@ export const translations: Record<string, Record<"zh" | "en", string>> = {
     zh: "预览结果",
     en: "Preview result",
   },
+  action_view_layers: {
+    zh: "查看分层",
+    en: "View Layers",
+  },
+  action_layers_loading: {
+    zh: "加载分层...",
+    en: "Loading layers...",
+  },
+  action_layers_title: {
+    zh: "分层预览",
+    en: "Layer Preview",
+  },
+  action_layer_nth: {
+    zh: "第",
+    en: "Layer ",
+  },
+  action_layer_unit: {
+    zh: "层",
+    en: "",
+  },
+  action_layer_prev: {
+    zh: "上一层",
+    en: "Prev",
+  },
+  action_layer_next: {
+    zh: "下一层",
+    en: "Next",
+  },
 
   // ==================== Bed Size Selector ====================
   bed_size_label: {

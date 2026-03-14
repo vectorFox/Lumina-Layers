@@ -345,6 +345,59 @@ async def convert_preview(
     )
 
 
+@router.get("/layer-images/{session_id}")
+def get_layer_images(
+    session_id: str,
+    store: SessionStore = Depends(get_session_store),
+    registry: FileRegistry = Depends(get_file_registry),
+):
+    """Generate per-layer material preview images from cached preview data.
+    从缓存的预览数据生成每层材料预览图。
+
+    Returns a list of layer image URLs with material names.
+    返回每层图片 URL 和材料名称列表。
+    """
+    session_data = _require_session(store, session_id)
+    cache = _require_preview_cache(session_data)
+
+    material_matrix = cache.get("material_matrix")
+    mask_solid = cache.get("mask_solid")
+    color_conf = cache.get("color_conf")
+    if material_matrix is None or mask_solid is None or color_conf is None:
+        raise HTTPException(status_code=400, detail="Preview cache missing required data")
+
+    h, w = material_matrix.shape[:2]
+    n_layers = material_matrix.shape[2]
+    preview_colors = color_conf.get("preview", {})
+    slots = color_conf.get("slots", [])
+
+    layers = []
+    for layer_idx in range(n_layers):
+        layer = material_matrix[:, :, layer_idx]
+        # 浅灰背景
+        layer_img = np.ones((h, w, 3), dtype=np.uint8) * 220
+
+        for mat_id, rgba in preview_colors.items():
+            mat_mask = (layer == mat_id) & mask_solid
+            if np.any(mat_mask):
+                layer_img[mat_mask] = rgba[:3]
+
+        # 非实体区域用更浅的灰
+        layer_img[~mask_solid] = [240, 240, 240]
+
+        png_bytes = _image_to_png_bytes(Image.fromarray(layer_img))
+        file_id = registry.register_bytes(session_id, png_bytes, f"layer_{layer_idx}.png")
+
+        slot_name = slots[layer_idx] if layer_idx < len(slots) else f"Layer {layer_idx}"
+        layers.append({
+            "layer_index": layer_idx,
+            "name": slot_name,
+            "url": f"/api/files/{file_id}",
+        })
+
+    return {"session_id": session_id, "layers": layers}
+
+
 @router.post("/upload-heightmap")
 async def upload_heightmap(
     heightmap: UploadFile = File(..., description="高度图文件"),

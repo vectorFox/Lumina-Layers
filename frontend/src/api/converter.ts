@@ -166,3 +166,26 @@ export async function replaceColor(
   );
   return response.data;
 }
+
+/** 分层图片响应 */
+export interface LayerImageInfo {
+  layer_index: number;
+  name: string;
+  url: string;
+}
+
+export interface LayerImagesResponse {
+  session_id: string;
+  layers: LayerImageInfo[];
+}
+
+/** 获取分层材料预览图 */
+export async function fetchLayerImages(
+  sessionId: string,
+): Promise<LayerImagesResponse> {
+  const response = await apiClient.get<LayerImagesResponse>(
+    `/convert/layer-images/${sessionId}`,
+    { timeout: 15_000 },
+  );
+  return response.data;
+}
