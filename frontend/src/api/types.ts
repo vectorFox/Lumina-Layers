@@ -353,6 +353,23 @@ export interface ColorReplaceResponse {
   replacement_count: number;
 }
 
+// ========== Region Detection & Replace Models ==========
+
+/** 连通区域检测响应 */
+export interface RegionDetectResponse {
+  region_id: string;
+  color_hex: string;
+  pixel_count: number;
+  preview_url: string;
+  contours?: number[][][] | null;
+}
+
+/** 区域替换响应 */
+export interface RegionReplaceResponse {
+  preview_url: string;
+  message: string;
+}
+
 // ========== Settings Models ==========
 
 export interface UserSettings {

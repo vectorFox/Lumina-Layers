@@ -24,6 +24,8 @@ import {
   cropImage as apiCropImage,
   convertBatch as apiConvertBatch,
   replaceColor as apiReplaceColor,
+  detectRegion as apiDetectRegion,
+  regionReplace as apiRegionReplace,
 } from "../api/converter";
 import type { LutColorEntry, LutInfo } from "../api/types";
 import {
@@ -31,6 +33,18 @@ import {
   colorRemapToReplacementRegions,
 } from "../utils/colorUtils";
 import { useSettingsStore } from "./settingsStore";
+
+// ========== Selection Mode Types ==========
+
+export type SelectionMode = 'select-all' | 'current' | 'multi-select' | 'region';
+
+export interface RegionData {
+  regionId: string;
+  colorHex: string;
+  pixelCount: number;
+  previewUrl: string;
+  contours?: number[][][] | null;
+}
 
 // ========== Helpers ==========
 
@@ -131,6 +145,8 @@ export interface ConverterState {
   preview_width_mm: number | null; // 预览时的原始宽度
   preview_height_mm: number | null; // 预览时的原始高度
   preview_spacer_thick: number | null; // 预览时的原始厚度
+  previewPixelWidth: number | null;  // 预览图像像素宽度（用于 3D→像素坐标转换）
+  previewPixelHeight: number | null; // 预览图像像素高度（用于 3D→像素坐标转换）
 
   // 模型边界（供 KeychainRing3D 定位）
   modelBounds: {
@@ -185,6 +201,11 @@ export interface ConverterState {
   layerImages: { layer_index: number; name: string; url: string }[];
   layerImagesLoading: boolean;
   layerImagesOpen: boolean;
+
+  // 颜色选择模式
+  selectionMode: SelectionMode;
+  selectedColors: Set<string>;
+  regionData: RegionData | null;
 }
 
 // ========== Actions Interface ==========
@@ -229,6 +250,13 @@ export interface ConverterActions {
   // 调色板与选择
   setSelectedColor: (hex: string | null) => void;
   setPalette: (entries: PaletteEntry[]) => void;
+
+  // 颜色选择模式
+  setSelectionMode: (mode: SelectionMode) => void;
+  toggleColorInSelection: (hex: string) => void;
+  applyBatchColorRemap: (newHex: string) => Promise<void>;
+  detectRegion: (x: number, y: number) => Promise<void>;
+  applyRegionReplace: (newHex: string) => Promise<void>;
 
   // 颜色替换（纯前端）
   applyColorRemap: (origHex: string, newHex: string) => void;
@@ -357,6 +385,8 @@ const DEFAULT_STATE: ConverterState = {
   preview_width_mm: null,
   preview_height_mm: null,
   preview_spacer_thick: null,
+  previewPixelWidth: null,
+  previewPixelHeight: null,
   modelBounds: null,
   enableCrop: loadEnableCrop(),
   cropModalOpen: false,
@@ -385,6 +415,9 @@ const DEFAULT_STATE: ConverterState = {
   layerImages: [],
   layerImagesLoading: false,
   layerImagesOpen: false,
+  selectionMode: 'current' as SelectionMode,
+  selectedColors: new Set<string>(),
+  regionData: null,
 };
 
 // ========== Preview AbortController ==========
@@ -635,6 +668,150 @@ export const useConverterStore = create<ConverterState & ConverterActions>(
     setSelectedColor: (hex: string | null) => set({ selectedColor: hex }),
     setPalette: (entries: PaletteEntry[]) => set({ palette: entries }),
 
+    // --- 颜色选择模式 ---
+    // current: 单区域替换（3D 预览点击 → region-detect → 只替换该连通区域）
+    // select-all: 全局单色替换（选一个颜色 → 全图该颜色都替换）
+    // multi-select: 多选批量替换（选多个颜色 → 批量替换）
+    // region: 保留的局部区域模式
+    setSelectionMode: (mode: SelectionMode) => {
+      switch (mode) {
+        case 'current':
+          // 当前模式 = 单区域替换，清空多选，清空 selectedColor，准备 region-detect
+          set({
+            selectionMode: mode,
+            selectedColors: new Set<string>(),
+            selectedColor: null,
+            regionData: null,
+          });
+          break;
+        case 'select-all':
+          // 全选模式 = 全局单色替换，清空多选，保留 selectedColor 用于全局替换
+          set({ selectionMode: mode, selectedColors: new Set<string>() });
+          break;
+        case 'multi-select':
+          // 多选模式 = 可复选多个颜色，清空多选集合等待用户逐个选择
+          set({ selectionMode: mode, selectedColors: new Set<string>() });
+          break;
+        case 'region':
+          set({
+            selectionMode: mode,
+            selectedColors: new Set<string>(),
+            selectedColor: null,
+            regionData: null,
+          });
+          break;
+      }
+    },
+
+    // --- 多选模式颜色切换 ---
+    toggleColorInSelection: (hex: string) => {
+      set((state) => {
+        const next = new Set(state.selectedColors);
+        if (next.has(hex)) {
+          next.delete(hex);
+        } else {
+          next.add(hex);
+        }
+        return { selectedColors: next };
+      });
+    },
+
+    // --- 批量颜色替换 ---
+    applyBatchColorRemap: async (newHex: string) => {
+      const state = _get();
+      const colors = Array.from(state.selectedColors);
+      if (colors.length === 0) return;
+
+      // 1. 快照当前 colorRemapMap，作为单条记录推入 remapHistory
+      const snapshot = { ...state.colorRemapMap };
+      const newHistory = [...state.remapHistory, snapshot];
+
+      // 2. 批量更新 colorRemapMap
+      const newMap = { ...state.colorRemapMap };
+      for (const hex of colors) {
+        newMap[hex] = newHex;
+      }
+      set({
+        colorRemapMap: newMap,
+        remapHistory: newHistory,
+        replacePreviewLoading: true,
+        threemfDiskPath: null,
+        downloadUrl: null,
+      });
+
+      // 3. 依次调用后端替换
+      try {
+        for (const hex of colors) {
+          await _get().submitSingleReplace(hex, newHex);
+        }
+        set({ replacePreviewLoading: false });
+      } catch {
+        // 回滚整个批量操作
+        set({
+          colorRemapMap: snapshot,
+          remapHistory: state.remapHistory,
+          replacePreviewLoading: false,
+          error: "批量颜色替换失败",
+        });
+      }
+    },
+
+    // --- 连通区域检测 ---
+    detectRegion: async (x: number, y: number) => {
+      const state = _get();
+      if (!state.sessionId) {
+        set({ error: "请先预览图片" });
+        return;
+      }
+      try {
+        const response = await apiDetectRegion(state.sessionId, x, y);
+        set({
+          regionData: {
+            regionId: response.region_id,
+            colorHex: response.color_hex,
+            pixelCount: response.pixel_count,
+            previewUrl: response.preview_url,
+            contours: response.contours ?? null,
+          },
+          selectedColor: response.color_hex.replace(/^#/, ''),
+          previewImageUrl: `http://localhost:8000${response.preview_url}`,
+        });
+      } catch (err) {
+        set({
+          error: err instanceof Error ? err.message : "连通区域检测失败",
+        });
+      }
+    },
+
+    // --- 连通区域替换 ---
+    applyRegionReplace: async (newHex: string) => {
+      const state = _get();
+      if (!state.sessionId) {
+        set({ error: "请先预览图片" });
+        return;
+      }
+      if (!state.regionData) {
+        set({ error: "请先选择一个连通区域" });
+        return;
+      }
+      set({ replacePreviewLoading: true, error: null });
+      try {
+        const response = await apiRegionReplace(state.sessionId, `#${newHex}`);
+        set({
+          previewImageUrl: `http://localhost:8000${response.preview_url}`,
+          regionData: null,
+          replacePreviewLoading: false,
+          threemfDiskPath: null,
+          downloadUrl: null,
+        });
+      } catch (err) {
+        set({
+          replacePreviewLoading: false,
+          error: err instanceof Error ? err.message : "区域颜色替换失败",
+        });
+      }
+    },
+
     // --- 颜色替换（纯前端） ---
     applyColorRemap: (origHex: string, newHex: string) => {
       const state = _get();
@@ -877,6 +1054,8 @@ export const useConverterStore = create<ConverterState & ConverterActions>(
           preview_width_mm: state.target_width_mm,
           preview_height_mm: state.target_height_mm,
           preview_spacer_thick: state.spacer_thick,
+          previewPixelWidth: response.dimensions?.width ?? null,
+          previewPixelHeight: response.dimensions?.height ?? null,
         });
       } catch (err) {
         // Ignore aborted requests (user started a new preview)

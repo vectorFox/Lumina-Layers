@@ -370,6 +370,84 @@ class ColorMergePreviewRequest(BaseModel):
     )
 
 
+class RegionDetectRequest(BaseModel):
+    """Request model for detecting a connected region at a click position.
+    检测点击位置连通区域的请求模型。
+
+    Used by ``POST /api/converter/region-detect`` to identify the connected
+    region of same-colored pixels at the given (x, y) coordinate.
+    用于 ``POST /api/converter/region-detect``，识别给定 (x, y) 坐标处
+    同色像素的连通区域。
+
+    Attributes:
+        session_id: Active session identifier. (Session ID)
+        x: Click pixel X coordinate (0-indexed). (点击像素 X 坐标)
+        y: Click pixel Y coordinate (0-indexed). (点击像素 Y 坐标)
+    """
+
+    session_id: str = Field(..., description="Session ID")
+    x: int = Field(..., ge=0, description="点击像素 X 坐标")
+    y: int = Field(..., ge=0, description="点击像素 Y 坐标")
+
+
+class RegionDetectResponse(BaseModel):
+    """Response model for connected region detection.
+    连通区域检测的响应模型。
+
+    Returns the detected region metadata including a unique identifier,
+    the region color, pixel count, and a highlighted preview image URL.
+    返回检测到的区域元数据，包括唯一标识、区域颜色、像素数量和高亮预览图 URL。
+
+    Attributes:
+        region_id: Unique identifier for the detected region. (区域唯一标识)
+        color_hex: Hex color of the region. (区域颜色 hex)
+        pixel_count: Number of pixels in the region. (区域像素数量)
+        preview_url: URL of the highlighted preview image. (高亮预览图 URL)
+    """
+
+    region_id: str = Field(..., description="区域唯一标识")
+    color_hex: str = Field(..., description="区域颜色 hex")
+    pixel_count: int = Field(..., description="区域像素数量")
+    preview_url: str = Field(..., description="高亮预览图 URL")
+    contours: list[list[list[float]]] | None = Field(
+        None, description="区域轮廓坐标（世界坐标 mm），用于 3D 高亮"
+    )
+
+
+class RegionReplaceRequest(BaseModel):
+    """Request model for replacing color in a selected connected region.
+    替换选中连通区域颜色的请求模型。
+
+    Used by ``POST /api/converter/region-replace`` to replace the color
+    of a previously detected connected region with a new target color.
+    用于 ``POST /api/converter/region-replace``，将先前检测到的
+    连通区域颜色替换为新的目标颜色。
+
+    Attributes:
+        session_id: Active session identifier. (Session ID)
+        replacement_color: Target replacement color in hex format. (替换目标色 hex)
+    """
+
+    session_id: str = Field(..., description="Session ID")
+    replacement_color: str = Field(..., description="替换目标色 hex")
+
+
+class RegionReplaceResponse(BaseModel):
+    """Response model for region color replacement.
+    区域颜色替换的响应模型。
+
+    Returns the preview image URL after replacement and an operation message.
+    返回替换后的预览图 URL 和操作结果消息。
+
+    Attributes:
+        preview_url: URL of the post-replacement preview image. (替换后预览图 URL)
+        message: Operation result message. (操作结果消息)
+    """
+
+    preview_url: str = Field(..., description="替换后预览图 URL")
+    message: str = Field("Region replaced", description="操作结果消息")
+
+
 class BedSizeItem(BaseModel):
     """A single printer bed size option.
     单个打印热床尺寸选项。

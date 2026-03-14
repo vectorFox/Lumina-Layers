@@ -8,6 +8,7 @@ import asyncio
 import os
 import pickle
 import tempfile
+import uuid
 import zipfile
 
 import cv2
@@ -25,6 +26,10 @@ from api.schemas.converter import (
     ColorMergePreviewRequest,
     ColorReplaceRequest,
     ConvertGenerateRequest,
+    RegionDetectRequest,
+    RegionDetectResponse,
+    RegionReplaceRequest,
+    RegionReplaceResponse,
 )
 from api.schemas.responses import (
     BatchItemResult,
@@ -46,7 +51,7 @@ from api.workers.converter_workers import (
 from core.color_merger import ColorMerger
 from core.image_preprocessor import ImagePreprocessor
 from core.color_replacement import ColorReplacementManager
-from core.converter import convert_image_to_3d, extract_color_palette, generate_empty_bed_glb, generate_segmented_glb
+from core.converter import convert_image_to_3d, extract_color_palette, generate_empty_bed_glb, generate_segmented_glb, _compute_connected_region_mask_4n
 from config import BedManager, ModelingMode as CoreModelingMode, PrinterConfig
 from core.heightmap_loader import HeightmapLoader
 from utils.lut_manager import LUTManager
@@ -857,6 +862,214 @@ def replace_color(
         message="Color replaced successfully",
         preview_url=f"/api/files/{preview_id}",
         replacement_count=len(current_regions),
+    )
+
+
+@router.post("/region-detect", response_model=RegionDetectResponse)
+def region_detect(
+    request: RegionDetectRequest,
+    store: SessionStore = Depends(get_session_store),
+    registry: FileRegistry = Depends(get_file_registry),
+) -> RegionDetectResponse:
+    """Detect a connected region of same-colored pixels at the click position.
+    检测点击位置处同色像素的连通区域。
+
+    This endpoint is synchronous because the BFS flood-fill on a small
+    quantized preview image is lightweight. The heavy image processing
+    was already completed in the /preview step.
+    此端点同步执行，因为在小尺寸量化预览图上的 BFS 洪水填充计算量很小。
+    繁重的图像处理已在 /preview 步骤中完成。
+
+    Args:
+        request (RegionDetectRequest): Region detection parameters. (区域检测参数)
+        store (SessionStore): Session store dependency. (会话存储依赖)
+        registry (FileRegistry): File registry dependency. (文件注册表依赖)
+
+    Returns:
+        RegionDetectResponse: Detected region metadata with preview URL. (检测到的区域元数据及预览 URL)
+
+    Raises:
+        HTTPException(404): Session not found. (会话不存在)
+        HTTPException(409): No preview cache available. (无预览缓存)
+        HTTPException(400): Click coordinates out of bounds or on background. (点击坐标越界或在背景上)
+        HTTPException(500): Internal processing error. (内部处理错误)
+    """
+    session_data = _require_session(store, request.session_id)
+    cache = _require_preview_cache(session_data)
+
+    try:
+        quantized_image: np.ndarray | None = cache.get("quantized_image")
+        mask_solid: np.ndarray | None = cache.get("mask_solid")
+        matched_rgb: np.ndarray | None = cache.get("matched_rgb")
+
+        if quantized_image is None or mask_solid is None or matched_rgb is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Preview cache missing quantized_image, mask_solid, or matched_rgb.",
+            )
+
+        h, w = quantized_image.shape[:2]
+        x, y = request.x, request.y
+
+        if not (0 <= x < w and 0 <= y < h):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Coordinates ({x}, {y}) out of bounds for image {w}x{h}.",
+            )
+
+        if not mask_solid[y, x]:
+            raise HTTPException(
+                status_code=400,
+                detail="Clicked on background area.",
+            )
+
+        # Compute connected region mask via 4-neighbor BFS
+        region_mask: np.ndarray = _compute_connected_region_mask_4n(
+            quantized_image, mask_solid, x, y
+        )
+
+        pixel_count: int = int(np.count_nonzero(region_mask))
+        if pixel_count == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="No connected region found at the click position.",
+            )
+
+        # Extract region color from matched_rgb at click position
+        r, g, b = int(matched_rgb[y, x, 0]), int(matched_rgb[y, x, 1]), int(matched_rgb[y, x, 2])
+        color_hex: str = f"#{r:02x}{g:02x}{b:02x}"
+
+        # Store region_mask in session for subsequent region-replace
+        region_id: str = str(uuid.uuid4())
+        store.put(request.session_id, "selected_region_mask", region_mask)
+        store.put(request.session_id, "selected_region_id", region_id)
+
+        # Generate highlighted preview: overlay region with semi-transparent highlight
+        highlight_color = np.array([0, 200, 255], dtype=np.uint8)  # cyan highlight
+        alpha = 0.45
+        preview_img: np.ndarray = matched_rgb.copy()
+        preview_img[region_mask] = (
+            preview_img[region_mask].astype(np.float32) * (1 - alpha)
+            + highlight_color.astype(np.float32) * alpha
+        ).astype(np.uint8)
+
+        preview_bytes: bytes = _image_to_png_bytes(preview_img)
+        preview_id: str = registry.register_bytes(
+            request.session_id, preview_bytes, "region_highlight.png"
+        )
+
+        # Extract 2D contours from region_mask for frontend RGB outline rendering
+        region_contours: list[list[list[float]]] | None = None
+        target_w = cache.get("target_w")
+        target_width_mm = cache.get("target_width_mm")
+        if target_w and target_width_mm and target_w > 0:
+            pixel_scale = target_width_mm / target_w
+            mask_u8 = region_mask.astype(np.uint8) * 255
+            cv_contours, _ = cv2.findContours(
+                mask_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
+            region_contours = []
+            for cnt in cv_contours:
+                if len(cnt) < 3:
+                    continue
+                pts = cnt.squeeze(1).astype(float)
+                world_pts: list[list[float]] = []
+                for px, py in pts:
+                    x_mm = float(px * pixel_scale)
+                    y_mm = float((h - py) * pixel_scale)
+                    world_pts.append([x_mm, y_mm])
+                region_contours.append(world_pts)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        _handle_core_error(e, "Region detection")
+
+    return RegionDetectResponse(
+        region_id=region_id,
+        color_hex=color_hex,
+        pixel_count=pixel_count,
+        preview_url=f"/api/files/{preview_id}",
+        contours=region_contours,
+    )
+
+
+@router.post("/region-replace", response_model=RegionReplaceResponse)
+def region_replace(
+    request: RegionReplaceRequest,
+    store: SessionStore = Depends(get_session_store),
+    registry: FileRegistry = Depends(get_file_registry),
+) -> RegionReplaceResponse:
+    """Replace color only within the previously detected connected region.
+    仅替换先前检测到的连通区域内的颜色。
+
+    This endpoint is synchronous because it performs a simple masked
+    pixel assignment on the cached matched_rgb array (small preview image).
+    此端点同步执行，因为仅对缓存的 matched_rgb 数组执行简单的掩码像素赋值。
+
+    Args:
+        request (RegionReplaceRequest): Region replacement parameters. (区域替换参数)
+        store (SessionStore): Session store dependency. (会话存储依赖)
+        registry (FileRegistry): File registry dependency. (文件注册表依赖)
+
+    Returns:
+        RegionReplaceResponse: Replacement result with preview URL. (替换结果及预览 URL)
+
+    Raises:
+        HTTPException(404): Session not found. (会话不存在)
+        HTTPException(409): No preview cache or no region selected. (无预览缓存或未选中区域)
+        HTTPException(500): Internal processing error. (内部处理错误)
+    """
+    session_data = _require_session(store, request.session_id)
+    cache = _require_preview_cache(session_data)
+
+    try:
+        matched_rgb: np.ndarray | None = cache.get("matched_rgb")
+        if matched_rgb is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Preview cache missing matched_rgb.",
+            )
+
+        region_mask: np.ndarray | None = session_data.get("selected_region_mask")
+        if region_mask is None:
+            raise HTTPException(
+                status_code=409,
+                detail="No region selected. Call POST /api/convert/region-detect first.",
+            )
+
+        # Parse replacement hex to RGB tuple
+        replacement_rgb = np.array(
+            ColorReplacementManager._hex_to_color(request.replacement_color),
+            dtype=np.uint8,
+        )
+
+        # Apply region replacement: only modify pixels within the mask
+        replaced_rgb: np.ndarray = matched_rgb.copy()
+        replaced_rgb[region_mask] = replacement_rgb
+
+        # Update matched_rgb in session cache
+        cache["matched_rgb"] = replaced_rgb
+        store.put(request.session_id, "preview_cache", cache)
+
+        # Generate preview PNG
+        preview_bytes: bytes = _image_to_png_bytes(replaced_rgb)
+        preview_id: str = registry.register_bytes(
+            request.session_id, preview_bytes, "preview_region_replaced.png"
+        )
+
+        # Clear region mask after replacement
+        store.put(request.session_id, "selected_region_mask", None)
+        store.put(request.session_id, "selected_region_id", None)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        _handle_core_error(e, "Region replacement")
+
+    return RegionReplaceResponse(
+        preview_url=f"/api/files/{preview_id}",
+        message="Region color replaced successfully",
     )
 
 

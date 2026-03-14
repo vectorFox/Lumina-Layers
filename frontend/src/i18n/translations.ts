@@ -693,6 +693,22 @@ export const translations: Record<string, Record<"zh" | "en", string>> = {
     zh: "↩️ 已撤销",
     en: "↩️ Undone",
   },
+  palette_mode_select_all: {
+    zh: "全选",
+    en: "All",
+  },
+  palette_mode_current: {
+    zh: "当前",
+    en: "Current",
+  },
+  palette_mode_multi_select: {
+    zh: "多选",
+    en: "Multi",
+  },
+  palette_mode_region: {
+    zh: "局部区域",
+    en: "Region",
+  },
 
   // ==================== Color Merging ====================
   merge_enable_label: {

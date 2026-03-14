@@ -285,6 +285,13 @@ function InteractiveModelViewer({
   // We store this on the converterStore so Scene3D can read it.
   const colorHitRef = useRef(false);
 
+  // Read selectionMode and related state for region click handling
+  const selectionMode = useConverterStore((s) => s.selectionMode);
+  const detectRegion = useConverterStore((s) => s.detectRegion);
+  const regionData = useConverterStore((s) => s.regionData);
+  const previewPixelWidth = useConverterStore((s) => s.previewPixelWidth);
+  const previewPixelHeight = useConverterStore((s) => s.previewPixelHeight);
+
   const handlePointerDown = useCallback(
     (event: PointerEvent) => {
       if (event.button !== 0) return; // Only left click
@@ -302,13 +309,49 @@ function InteractiveModelViewer({
         const hitMesh = intersects[0].object as THREE.Mesh;
         if (hitMesh.name.startsWith("color_")) {
           colorHitRef.current = true;
-          const hex = extractHexFromMeshName(hitMesh.name);
-          const result = toggleColorSelection(selectedColor, hex);
-          onColorClick(result);
+
+          if (selectionMode === "current" || selectionMode === "region") {
+            // 当前模式 和 局部区域模式: 3D 点击 → region-detect（单区域选择）
+            // 不立即设置 selectedColor，等 detectRegion 返回后由 store 设置
+            // 这样 RGB 光带只高亮点击的那个连通区域，而非该颜色的所有区域
+            if (modelBounds && previewPixelWidth && previewPixelHeight) {
+              const hitPoint = intersects[0].point;
+              // Undo group scale to get geometry-space coordinates
+              const geoX = hitPoint.x / scaleX;
+              const geoY = hitPoint.y / scaleY;
+              // Normalize within model bounds (0..1)
+              const modelW = modelBounds.maxX - modelBounds.minX;
+              const modelH = modelBounds.maxY - modelBounds.minY;
+              if (modelW > 0 && modelH > 0) {
+                const normX = (geoX - modelBounds.minX) / modelW;
+                // Y is flipped: 3D Y-up → image Y-down
+                const normY = 1 - (geoY - modelBounds.minY) / modelH;
+                const pixelX = Math.round(normX * (previewPixelWidth - 1));
+                const pixelY = Math.round(normY * (previewPixelHeight - 1));
+                const clampedX = Math.max(0, Math.min(previewPixelWidth - 1, pixelX));
+                const clampedY = Math.max(0, Math.min(previewPixelHeight - 1, pixelY));
+                detectRegion(clampedX, clampedY);
+              }
+            }
+          } else {
+            // 全选模式 和 多选模式: 3D 点击 → 切换颜色选择
+            const hex = extractHexFromMeshName(hitMesh.name);
+            if (selectionMode === "select-all") {
+              // 全选模式: 3D 点击选中该颜色用于全局替换
+              const result = toggleColorSelection(selectedColor, hex);
+              onColorClick(result);
+            } else {
+              // 多选模式: 3D 点击切换该颜色在多选集合中的状态
+              // 同时设置 selectedColor 以触发 RGB 光带高亮
+              onColorClick(selectedColor === hex ? null : hex);
+              const { toggleColorInSelection } = useConverterStore.getState();
+              toggleColorInSelection(hex);
+            }
+          }
         }
       }
     },
-    [threeCtx.gl, threeCtx.camera, colorMeshes, selectedColor, onColorClick],
+    [threeCtx.gl, threeCtx.camera, colorMeshes, selectedColor, onColorClick, selectionMode, detectRegion, modelBounds, previewPixelWidth, previewPixelHeight, scaleX, scaleY],
   );
 
   // Expose colorHitRef check so Scene3D's onPointerMissed can query it
@@ -417,8 +460,27 @@ function InteractiveModelViewer({
     // Draw contour outline for selected color using backend-computed contours.
     // Contours are in raw world coords (mm, origin at bottom-left of image).
     // The GLB model is centered by subtracting sceneCenter, so apply same offset.
-    if (selectedColor && colorContours[selectedColor] && modelBounds) {
-      const polygons = colorContours[selectedColor];
+    // In current/region mode: use regionData.contours (single connected region only)
+    // In select-all/multi-select mode: use colorContours (all regions of that color)
+    const currentRegionData = regionData;
+    const currentSelectionMode = selectionMode;
+    let polygons: number[][][] | null = null;
+
+    if (selectedColor && modelBounds) {
+      if (
+        (currentSelectionMode === "current" || currentSelectionMode === "region") &&
+        currentRegionData?.contours &&
+        currentRegionData.contours.length > 0
+      ) {
+        // 当前/局部区域模式：只高亮点击的那个连通区域
+        polygons = currentRegionData.contours;
+      } else if (colorContours[selectedColor]) {
+        // 全选/多选模式：高亮该颜色的所有区域
+        polygons = colorContours[selectedColor];
+      }
+    }
+
+    if (polygons && selectedColor && modelBounds) {
       // Outline sits on top of the color layer (which is on top of the backing plate)
       const colorTopZ = spacerThick + COLOR_LAYER_HEIGHT + 0.1;
       const topZ = enableRelief
@@ -476,7 +538,7 @@ function InteractiveModelViewer({
         outlineArcRef.current.push(arcPairs);
       }
     }
-  }, [colorMeshes, mirrorMeshes, colorRemapMap, colorHeightMap, selectedColor, enableRelief, baseHeight, colorContours, modelBounds, sceneCenter, spacerThick, isDoubleSided, backingMesh, backingPlateMesh]);
+  }, [colorMeshes, mirrorMeshes, colorRemapMap, colorHeightMap, selectedColor, enableRelief, baseHeight, colorContours, modelBounds, sceneCenter, spacerThick, isDoubleSided, backingMesh, backingPlateMesh, regionData, selectionMode]);
 
   // Flowing RGB animation: shift hue offset each frame for a "light strip" effect.
   const tmpColorAnim = useRef(new THREE.Color());

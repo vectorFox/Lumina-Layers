@@ -248,3 +248,42 @@ describe('setEnableRelief auto-initialization', () => {
     expect(useConverterStore.getState().enable_cloisonne).toBe(false);
   });
 });
+
+
+describe('toggleColorInSelection', () => {
+  beforeEach(() => {
+    resetStore();
+    useConverterStore.setState({
+      selectionMode: 'multi-select',
+      selectedColors: new Set<string>(),
+    });
+  });
+
+  it('添加不存在的颜色到 selectedColors', () => {
+    useConverterStore.getState().toggleColorInSelection('ff0000');
+    expect(useConverterStore.getState().selectedColors.has('ff0000')).toBe(true);
+  });
+
+  it('移除已存在的颜色从 selectedColors', () => {
+    useConverterStore.setState({ selectedColors: new Set(['ff0000', '00ff00']) });
+    useConverterStore.getState().toggleColorInSelection('ff0000');
+    expect(useConverterStore.getState().selectedColors.has('ff0000')).toBe(false);
+    expect(useConverterStore.getState().selectedColors.has('00ff00')).toBe(true);
+  });
+
+  it('连续 toggle 同一颜色两次恢复原状', () => {
+    useConverterStore.getState().toggleColorInSelection('aabbcc');
+    expect(useConverterStore.getState().selectedColors.has('aabbcc')).toBe(true);
+    useConverterStore.getState().toggleColorInSelection('aabbcc');
+    expect(useConverterStore.getState().selectedColors.has('aabbcc')).toBe(false);
+  });
+
+  it('toggle 不影响其他已选中的颜色', () => {
+    useConverterStore.setState({ selectedColors: new Set(['111111', '222222']) });
+    useConverterStore.getState().toggleColorInSelection('333333');
+    const colors = useConverterStore.getState().selectedColors;
+    expect(colors.has('111111')).toBe(true);
+    expect(colors.has('222222')).toBe(true);
+    expect(colors.has('333333')).toBe(true);
+  });
+});

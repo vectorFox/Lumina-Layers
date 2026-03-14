@@ -201,6 +201,11 @@ export default function LutColorGrid() {
   const lutColors = useConverterStore((s) => s.lutColors);
   const lutColorsLoading = useConverterStore((s) => s.lutColorsLoading);
   const lutColorsLutName = useConverterStore((s) => s.lutColorsLutName);
+  const selectionMode = useConverterStore((s) => s.selectionMode);
+  const selectedColors = useConverterStore((s) => s.selectedColors);
+  const applyBatchColorRemap = useConverterStore((s) => s.applyBatchColorRemap);
+  const replacePreviewLoading = useConverterStore((s) => s.replacePreviewLoading);
+  const applyRegionReplace = useConverterStore((s) => s.applyRegionReplace);
   const [hueFilter, setHueFilter] = useState<HueCategory>("all");
   const [searchText, setSearchText] = useState("");
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
@@ -259,14 +264,49 @@ export default function LutColorGrid() {
     return sortByColorDistance(hexToRgb(selectedColor), lutColors, 12);
   }, [selectedColor, lutColors]);
 
-  const handleColorClick = (clickedHex: string) => {
-    if (!selectedColor) return;
-    applyColorRemap(selectedColor, clickedHex.replace("#", ""));
-    setSelectedColor(null);
+  const handleColorClick = async (clickedHex: string) => {
+    if (replacePreviewLoading) return;
+
+    const hexNoHash = clickedHex.replace("#", "");
+
+    switch (selectionMode) {
+      case 'current': {
+        // 当前模式 = 单区域替换，点击 LUT 颜色 → 替换已选中的连通区域
+        if (applyRegionReplace) {
+          await applyRegionReplace(hexNoHash);
+        }
+        break;
+      }
+      case 'select-all': {
+        // 全选模式 = 全局单色替换，点击 LUT 颜色 → 替换 selectedColor 对应的全图颜色
+        if (!selectedColor) return;
+        applyColorRemap(selectedColor, hexNoHash);
+        setSelectedColor(null);
+        break;
+      }
+      case 'multi-select': {
+        // 多选模式 = 批量替换所有 selectedColors
+        if (selectedColors.size === 0) return;
+        await applyBatchColorRemap(hexNoHash);
+        break;
+      }
+      case 'region': {
+        // 局部区域模式 → 替换已选中的连通区域
+        if (applyRegionReplace) {
+          await applyRegionReplace(hexNoHash);
+        }
+        break;
+      }
+    }
   };
 
   return (
-    <div>
+    <div className="relative">
+      {replacePreviewLoading && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-900/50 rounded">
+          <p className="text-xs text-gray-300">{t("lut_grid_loading")}</p>
+        </div>
+      )}
       {lutColorsLoading ? (
         <p className="text-xs text-gray-500 py-2">{t("lut_grid_loading")}</p>
       ) : lutColors.length === 0 ? (

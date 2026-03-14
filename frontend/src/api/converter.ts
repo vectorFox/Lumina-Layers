@@ -11,6 +11,8 @@ import type {
   BatchConvertParams,
   BatchResponse,
   ColorReplaceResponse,
+  RegionDetectResponse,
+  RegionReplaceResponse,
 } from "./types";
 
 /** 上传图片 + 参数，获取 2D 预览（返回 JSON，含 session_id 和 preview_url） */
@@ -186,6 +188,33 @@ export async function fetchLayerImages(
   const response = await apiClient.get<LayerImagesResponse>(
     `/convert/layer-images/${sessionId}`,
     { timeout: 15_000 },
+  );
+  return response.data;
+}
+
+/** 检测点击位置的连通区域 */
+export async function detectRegion(
+  sessionId: string,
+  x: number,
+  y: number,
+): Promise<RegionDetectResponse> {
+  const response = await apiClient.post<RegionDetectResponse>(
+    "/convert/region-detect",
+    { session_id: sessionId, x, y },
+    { timeout: 30_000 },
+  );
+  return response.data;
+}
+
+/** 替换已选中连通区域的颜色 */
+export async function regionReplace(
+  sessionId: string,
+  replacementColor: string,
+): Promise<RegionReplaceResponse> {
+  const response = await apiClient.post<RegionReplaceResponse>(
+    "/convert/region-replace",
+    { session_id: sessionId, replacement_color: replacementColor },
+    { timeout: 30_000 },
   );
   return response.data;
 }

@@ -168,12 +168,41 @@ export default function PalettePanel() {
   const undoColorRemap = useConverterStore((s) => s.undoColorRemap);
   const clearAllRemaps = useConverterStore((s) => s.clearAllRemaps);
   const heightmap_max_height = useConverterStore((s) => s.heightmap_max_height);
+  const selectionMode = useConverterStore((s) => s.selectionMode);
+  const setSelectionMode = useConverterStore((s) => s.setSelectionMode);
+  const selectedColors = useConverterStore((s) => s.selectedColors);
+  const toggleColorInSelection = useConverterStore((s) => s.toggleColorInSelection);
 
   const hasRemaps = Object.keys(colorRemapMap).length > 0;
   const hasHistory = remapHistory.length > 0;
 
   const handleSelect = (hex: string) => {
-    setSelectedColor(selectedColor === hex ? null : hex);
+    switch (selectionMode) {
+      case 'current':
+        // 当前模式 = 单区域替换，调色板点击不响应（由 3D 预览处理）
+        break;
+      case 'select-all':
+        // 全选模式 = 全局单色替换，点击调色板选中一个颜色
+        setSelectedColor(selectedColor === hex ? null : hex);
+        break;
+      case 'multi-select':
+        // 多选模式 = 可复选，点击切换选中状态
+        // 同时设置 selectedColor 以触发 RGB 光带高亮
+        setSelectedColor(selectedColor === hex ? null : hex);
+        toggleColorInSelection(hex);
+        break;
+      case 'region':
+        // 局部区域模式，调色板点击不响应（由 3D 预览处理）
+        break;
+    }
+  };
+
+  const getIsSelected = (hex: string): boolean => {
+    if (selectionMode === 'multi-select') {
+      return selectedColors.has(hex);
+    }
+    // 所有其他模式统一使用 selectedColor 高亮（RGB 光带效果一致）
+    return selectedColor === hex;
   };
 
   return (
@@ -198,7 +227,7 @@ export default function PalettePanel() {
             );
           })()}
 
-          {/* Undo / Clear buttons */}
+          {/* Undo / Clear buttons + Mode switching buttons */}
           <div className="flex gap-2 mb-2">
             <Button
               label={t("palette_undo")}
@@ -211,6 +240,31 @@ export default function PalettePanel() {
               variant="secondary"
               onClick={clearAllRemaps}
               disabled={!hasRemaps}
+            />
+
+            {/* Separator */}
+            <div className="w-px bg-gray-600 mx-1" />
+
+            {/* Mode switching buttons */}
+            <Button
+              label={t("palette_mode_select_all")}
+              variant={selectionMode === 'select-all' ? 'primary' : 'secondary'}
+              onClick={() => setSelectionMode('select-all')}
+            />
+            <Button
+              label={t("palette_mode_current")}
+              variant={selectionMode === 'current' ? 'primary' : 'secondary'}
+              onClick={() => setSelectionMode('current')}
+            />
+            <Button
+              label={t("palette_mode_multi_select")}
+              variant={selectionMode === 'multi-select' ? 'primary' : 'secondary'}
+              onClick={() => setSelectionMode('multi-select')}
+            />
+            <Button
+              label={t("palette_mode_region")}
+              variant={selectionMode === 'region' ? 'primary' : 'secondary'}
+              onClick={() => setSelectionMode('region')}
             />
           </div>
 
@@ -231,7 +285,7 @@ export default function PalettePanel() {
                 <PaletteItem
                   key={entry.matched_hex}
                   entry={entry}
-                  isSelected={selectedColor === entry.matched_hex}
+                  isSelected={getIsSelected(entry.matched_hex)}
                   remappedHex={colorRemapMap[entry.matched_hex]}
                   heightMm={color_height_map[entry.matched_hex]}
                   showHeightSlider={enable_relief}

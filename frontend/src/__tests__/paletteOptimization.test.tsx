@@ -261,12 +261,13 @@ describe('PalettePanel 双色显示', () => {
     expect(screen.queryByText('匹配色')).not.toBeInTheDocument();
   });
 
-  it('点击调色板颜色可切换选中状态', async () => {
+  it('点击调色板颜色可切换选中状态（全选模式）', async () => {
     const PalettePanel = await importPalettePanel();
 
     useConverterStore.setState({
       palette: PALETTE,
       selectedColor: null,
+      selectionMode: 'select-all',
       colorRemapMap: {},
       remapHistory: [],
       enable_relief: false,
@@ -280,6 +281,28 @@ describe('PalettePanel 双色显示', () => {
     fireEvent.click(firstItem);
 
     expect(useConverterStore.getState().selectedColor).toBe('ee0000');
+  });
+
+  it('当前模式下点击调色板不响应', async () => {
+    const PalettePanel = await importPalettePanel();
+
+    useConverterStore.setState({
+      palette: PALETTE,
+      selectedColor: null,
+      selectionMode: 'current',
+      colorRemapMap: {},
+      remapHistory: [],
+      enable_relief: false,
+      color_height_map: {},
+      heightmap_max_height: 5.0,
+    });
+
+    render(<PalettePanel />);
+
+    const firstItem = screen.getByRole('button', { name: /颜色 ee0000/ });
+    fireEvent.click(firstItem);
+
+    expect(useConverterStore.getState().selectedColor).toBeNull();
   });
 
   it('palette 为空时显示提示文本', async () => {
