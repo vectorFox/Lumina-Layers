@@ -446,7 +446,19 @@ def generate_smart_board(block_size_mm=5.0, gap_mm=0.8):
     )
 
 
-def generate_8color_board(page_index=0):
+def generate_8color_board(page_index: int = 0, block_size_mm: float = 5.0, gap_mm: float = 0.8):
+    """Generate 8-color calibration board page as 3MF.
+    生成 8 色校准板单页 3MF 模型。
+
+    Args:
+        page_index (int): Page index (0 or 1). (页码索引，0 或 1)
+        block_size_mm (float): Size of each color block in mm. (色块边长，单位 mm)
+        gap_mm (float): Gap between blocks in mm. (色块间距，单位 mm)
+
+    Returns:
+        tuple: (output_path, preview_image, status_message).
+               (输出路径, 预览图像, 状态消息)
+    """
     # 1. Load Data
     try:
         path = get_asset_path('smart_8color_stacks.npy')
@@ -474,8 +486,8 @@ def generate_8color_board(page_index=0):
     total_dim = 39
     
     # Calculate Voxels
-    px_blk = max(1, int(5.0 / PrinterConfig.NOZZLE_WIDTH))
-    px_gap = max(1, int(0.8 / PrinterConfig.NOZZLE_WIDTH))
+    px_blk = max(1, int(block_size_mm / PrinterConfig.NOZZLE_WIDTH))
+    px_gap = max(1, int(gap_mm / PrinterConfig.NOZZLE_WIDTH))
     v_w = total_dim * (px_blk + px_gap)
     
     full_matrix = np.full((5 + int(PrinterConfig.BACKING_MM/0.08), v_w, v_w), 0, dtype=int)
@@ -562,10 +574,19 @@ def generate_8color_board(page_index=0):
     
     return out_path, Image.fromarray(prev), "OK"
 
-def generate_8color_batch_zip():
-    """Generates both pages and zips them."""
-    f1, _, _ = generate_8color_board(0)
-    f2, _, _ = generate_8color_board(1)
+def generate_8color_batch_zip(block_size_mm: float = 5.0, gap_mm: float = 0.8):
+    """Generate both 8-color pages and zip them.
+    生成两页 8 色校准板并打包为 ZIP。
+
+    Args:
+        block_size_mm (float): Size of each color block in mm. (色块边长，单位 mm)
+        gap_mm (float): Gap between adjacent blocks in mm. (色块间距，单位 mm)
+
+    Returns:
+        tuple: (zip_path, preview_image, status_message). (ZIP 路径、预览图、状态信息)
+    """
+    f1, _, _ = generate_8color_board(0, block_size_mm=block_size_mm, gap_mm=gap_mm)
+    f2, _, _ = generate_8color_board(1, block_size_mm=block_size_mm, gap_mm=gap_mm)
     
     if not f1 or not f2: return None, None, "[ERROR] Generation failed"
     
@@ -574,7 +595,7 @@ def generate_8color_batch_zip():
         zf.write(f1, os.path.basename(f1))
         zf.write(f2, os.path.basename(f2))
         
-    _, prev, _ = generate_8color_board(0) # Show Page 1 as preview
+    _, prev, _ = generate_8color_board(0, block_size_mm=block_size_mm, gap_mm=gap_mm)
     return zip_path, prev, "[OK] 8-Color Kit (Page 1 & 2) Generated!"
 
 
@@ -1424,10 +1445,19 @@ def _generate_5color_extended_page(block_size_mm, gap_mm, preview_colors, slot_n
     )
 
 
-def generate_5color_extended_batch_zip():
-    """Generates both pages and zips them."""
-    f1, _, _ = generate_5color_extended_board(page_index=0)
-    f2, _, _ = generate_5color_extended_board(page_index=1)
+def generate_5color_extended_batch_zip(block_size_mm: float = 5.0, gap_mm: float = 0.8):
+    """Generate both 5-color extended pages and zip them.
+    生成两页 5 色扩展校准板并打包为 ZIP。
+
+    Args:
+        block_size_mm (float): Swatch block size in mm. (色块边长，单位 mm)
+        gap_mm (float): Gap between swatches in mm. (色块间距，单位 mm)
+
+    Returns:
+        tuple: (zip_path, preview_image, status_message). (ZIP 路径、预览图、状态信息)
+    """
+    f1, _, _ = generate_5color_extended_board(block_size_mm=block_size_mm, gap_mm=gap_mm, page_index=0)
+    f2, _, _ = generate_5color_extended_board(block_size_mm=block_size_mm, gap_mm=gap_mm, page_index=1)
     
     if not f1 or not f2:
         return None, None, "❌ Generation failed"
@@ -1437,5 +1467,5 @@ def generate_5color_extended_batch_zip():
         zf.write(f1, os.path.basename(f1))
         zf.write(f2, os.path.basename(f2))
     
-    _, prev, _ = generate_5color_extended_board(page_index=0)  # Show Page 1 as preview
+    _, prev, _ = generate_5color_extended_board(block_size_mm=block_size_mm, gap_mm=gap_mm, page_index=0)  # Show Page 1 as preview
     return zip_path, prev, "✅ 5-Color Extended Kit (Page 1 & 2) Generated!"

@@ -2,6 +2,7 @@ import { useRef, useEffect, useCallback, useState } from "react";
 import { useExtractorStore } from "../stores/extractorStore";
 import { ExtractorColorMode } from "../api/types";
 import { useI18n } from "../i18n/context";
+import { getObjectFitRect, lutClickToCell, getCellOverlayStyle, type RenderedImageRect } from "../utils/lutCoordUtils";
 
 // ========== Corner Labels Mapping (exported for testing) ==========
 
@@ -124,6 +125,7 @@ export default function ExtractorCanvas() {
   // ---------- Manual fix state: selected cell + color picker ----------
   const [selectedCell, setSelectedCell] = useState<[number, number] | null>(null);
   const [fixColor, setFixColor] = useState("#000000");
+  const [renderedRect, setRenderedRect] = useState<RenderedImageRect | null>(null);
   const lutPreviewRef = useRef<HTMLImageElement>(null);
 
   // ---------- Load image into off-screen Image object ----------
@@ -187,11 +189,22 @@ export default function ExtractorCanvas() {
       if (!img) return;
       const rect = img.getBoundingClientRect();
       const gridSize = LUT_GRID_SIZE[color_mode] ?? 32;
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      const col = Math.min(Math.floor((x / rect.width) * gridSize), gridSize - 1);
-      const row = Math.min(Math.floor((y / rect.height) * gridSize), gridSize - 1);
-      setSelectedCell([row, col]);
+
+      const rendered = getObjectFitRect(
+        img.naturalWidth, img.naturalHeight,
+        rect.width, rect.height
+      );
+      const cell = lutClickToCell(
+        e.clientX - rect.left,
+        e.clientY - rect.top,
+        rendered,
+        gridSize
+      );
+      if (cell) {
+        setSelectedCell(cell);
+        setRenderedRect(rendered);
+      }
+      // 留白区域点击被忽略
     },
     [color_mode]
   );
@@ -207,36 +220,73 @@ export default function ExtractorCanvas() {
     return (
       <div
         data-testid="extractor-results"
-        className="flex-1 flex flex-col items-center justify-center gap-6 p-6 overflow-auto"
+        className="flex-1 flex flex-col items-center justify-center gap-4 p-6 overflow-auto"
       >
-        {warp_view_url && (
-          <div className="flex flex-col items-center gap-2">
-            <span className="text-xs text-gray-500 dark:text-gray-400">
-              {t("ext_canvas_warp_view")}
-            </span>
-            <img
-              data-testid="warp-view-image"
-              src={warp_view_url}
-              alt="Warp view"
-              className="max-w-full max-h-[40vh] rounded border border-gray-300 dark:border-gray-700"
-            />
-          </div>
-        )}
-        {lut_preview_url && (
-          <div className="flex flex-col items-center gap-2">
-            <span className="text-xs text-gray-500 dark:text-gray-400">
-              {t("ext_canvas_lut_preview")}
-            </span>
-            <img
-              ref={lutPreviewRef}
-              data-testid="lut-preview-image"
-              src={lut_preview_url}
-              alt="LUT preview"
-              onClick={handleLutPreviewClick}
-              className="max-w-full max-h-[40vh] rounded border border-gray-300 dark:border-gray-700 cursor-crosshair"
-            />
-          </div>
-        )}
+        {/* 色卡 + LUT 预览：左右并排，等宽 */}
+        <div className="flex flex-row items-start gap-6 w-full justify-center">
+          {warp_view_url && (
+            <div className="flex flex-col items-center gap-2 flex-1 min-w-0">
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                {t("ext_canvas_warp_view")}
+              </span>
+              <img
+                data-testid="warp-view-image"
+                src={warp_view_url}
+                alt="Warp view"
+                className="w-full max-h-[55vh] object-contain rounded border border-gray-300 dark:border-gray-700"
+              />
+            </div>
+          )}
+          {lut_preview_url && (
+            <div className="flex flex-col items-center gap-2 flex-1 min-w-0">
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                {t("ext_canvas_lut_preview")}
+              </span>
+              <div className="relative w-full">
+                <img
+                  ref={lutPreviewRef}
+                  data-testid="lut-preview-image"
+                  src={lut_preview_url}
+                  alt="LUT preview"
+                  onClick={handleLutPreviewClick}
+                  className="w-full max-h-[55vh] object-contain rounded border border-gray-300 dark:border-gray-700 cursor-crosshair"
+                />
+                <style>{`
+                  @keyframes rainbow-border {
+                    0%   { border-color: hsl(0, 100%, 55%); }
+                    16%  { border-color: hsl(60, 100%, 55%); }
+                    33%  { border-color: hsl(120, 100%, 55%); }
+                    50%  { border-color: hsl(180, 100%, 55%); }
+                    66%  { border-color: hsl(240, 100%, 55%); }
+                    83%  { border-color: hsl(300, 100%, 55%); }
+                    100% { border-color: hsl(360, 100%, 55%); }
+                  }
+                `}</style>
+                {selectedCell && renderedRect && (() => {
+                  const gridSize = LUT_GRID_SIZE[color_mode] ?? 32;
+                  const overlay = getCellOverlayStyle(selectedCell[0], selectedCell[1], renderedRect, gridSize);
+                  return (
+                    <div
+                      data-testid="cell-highlight-overlay"
+                      style={{
+                        position: "absolute",
+                        left: overlay.left,
+                        top: overlay.top,
+                        width: overlay.width,
+                        height: overlay.height,
+                        border: "2px solid",
+                        pointerEvents: "none",
+                        boxShadow: "0 0 6px 2px rgba(255, 255, 255, 0.5)",
+                        boxSizing: "border-box",
+                        animation: "rainbow-border 3s linear infinite",
+                      }}
+                    />
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+        </div>
         {/* 手动修正浮层：选中色块后显示 */}
         {selectedCell && (
           <div
