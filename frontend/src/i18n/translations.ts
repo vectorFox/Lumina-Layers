@@ -1527,10 +1527,6 @@ export const translations: Record<string, Record<"zh" | "en", string>> = {
   },
 
   // ==================== Basic Settings ====================
-  basic_batch_mode: {
-    zh: "批量模式",
-    en: "Batch Mode",
-  },
   basic_crop_after_upload: {
     zh: "上传后裁剪",
     en: "Crop After Upload",
@@ -1954,32 +1950,36 @@ export const translations: Record<string, Record<"zh" | "en", string>> = {
     en: "Replace Preview",
   },
 
-  // ==================== Batch File Uploader ====================
-  batch_drop_hint: {
-    zh: "拖拽图片或点击上传（支持多选）",
-    en: "Drag & drop images or click to upload (multi-select)",
-  },
-  batch_drop_aria: {
-    zh: "拖拽图片或点击上传多个文件",
-    en: "Drag images or click to upload multiple files",
-  },
-  batch_file_count: {
-    zh: "已选 {count} 个文件",
-    en: "{count} files selected",
-  },
-  batch_file_list_label: {
-    zh: "已选文件列表",
-    en: "Selected files list",
-  },
-  batch_delete_file: {
-    zh: "删除 {name}",
-    en: "Delete {name}",
-  },
-
   // ==================== Image Upload ====================
   upload_drag_hint: {
     zh: "拖拽图片或点击上传",
     en: "Drag & drop image or click to upload",
+  },
+
+  // ==================== Unified Uploader ====================
+  upload_unified_hint: {
+    zh: "拖拽图片或点击上传（支持多选）",
+    en: "Drag & drop or click to upload (multi-select)",
+  },
+  upload_unified_aria: {
+    zh: "拖拽图片或点击上传文件",
+    en: "Drag images or click to upload files",
+  },
+  upload_add_more: {
+    zh: "添加更多图片",
+    en: "Add more images",
+  },
+  upload_file_count: {
+    zh: "已选 {count} 个文件",
+    en: "{count} files selected",
+  },
+  upload_file_list_label: {
+    zh: "已选文件列表",
+    en: "Selected files list",
+  },
+  upload_delete_file: {
+    zh: "删除 {name}",
+    en: "Delete {name}",
   },
 
   // ==================== Zoomable Image ====================

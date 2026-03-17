@@ -157,7 +157,7 @@ def worker_batch_convert_item(
 
     core_modeling_mode = ModelingMode(modeling_mode_value)
 
-    threemf_path, _glb_path, _preview_img, status_msg = convert_image_to_3d(
+    threemf_path, _glb_path, _preview_img, status_msg, _recipe = convert_image_to_3d(
         image_path=image_path,
         lut_path=lut_path,
         target_width_mm=target_width_mm,

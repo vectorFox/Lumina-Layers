@@ -190,7 +190,14 @@ function Scene3D({ modelUrl }: Scene3DProps) {
           className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-sm"
           data-testid="loading-overlay"
         >
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-300 border-t-blue-500" />
+          <div className="relative flex items-center justify-center p-4">
+            <div className="absolute h-20 w-20 rounded-full bg-blue-500/20 blur-xl animate-glow-pulse" />
+            <div className="relative flex h-20 w-20 items-center justify-center">
+              <div className="absolute inset-0 rounded-full border border-blue-500/30" />
+              <div className="absolute inset-0 rounded-full border-t-2 border-r-2 border-blue-400 rotate-45 opacity-80 animate-glow-spin" />
+              <div className="h-4 w-4 rounded-full bg-blue-400 shadow-[0_0_15px_rgba(96,165,250,0.8)]" />
+            </div>
+          </div>
         </div>
       )}
 

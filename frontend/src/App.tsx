@@ -66,29 +66,46 @@ function WidgetToggles() {
   const filteredRegistry = WIDGET_REGISTRY.filter((c) => activeWidgetIds.includes(c.id));
 
   return (
-    <div className="flex items-center gap-1">
-      {filteredRegistry.map((config) => (
-        <button
-          key={config.id}
-          data-testid={`widget-toggle-${config.id}`}
-          className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-            visibleWidgetIds.includes(config.id)
-              ? "bg-blue-600 text-white"
-              : "bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
-          }`}
-          onClick={() => toggleVisible(config.id)}
-          title={t(config.titleKey)}
-        >
-          {t(config.titleKey)}
-        </button>
-      ))}
+    <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-gray-200/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-2xl shadow-[inset_0_1px_4px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_1px_4px_rgba(0,0,0,0.4)] border border-white/40 dark:border-white/5 max-w-2xl">
+      {filteredRegistry.map((config) => {
+        const isActive = visibleWidgetIds.includes(config.id);
+        return (
+          <button
+            key={config.id}
+            data-testid={`widget-toggle-${config.id}`}
+            className={`
+              relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold tracking-wide transition-all duration-300 outline-none
+              ${
+                isActive
+                  ? "bg-white dark:bg-gray-700 text-blue-700 dark:text-blue-400 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)] border border-black/5 dark:border-white/10"
+                  : "bg-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-white/50 dark:hover:bg-gray-700/50 border border-transparent"
+              }
+            `}
+            style={{ WebkitTapHighlightColor: 'transparent' }}
+            onClick={() => toggleVisible(config.id)}
+            title={t(config.titleKey)}
+          >
+            {/* 状态小圆点 */}
+            <span 
+              className={`w-1.5 h-1.5 rounded-full transition-colors duration-300 ${isActive ? 'bg-blue-500 shadow-[0_0_6px_rgba(59,130,246,0.6)]' : 'bg-gray-300 dark:bg-gray-600'}`}
+            />
+            {t(config.titleKey)}
+          </button>
+        );
+      })}
+      
+      {/* 垂直分割线 */}
+      <div className="w-px h-5 bg-gray-300 dark:bg-gray-700 mx-1" />
+
       <button
         data-testid="widget-reset-layout"
-        className="px-3 py-1.5 rounded text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 transition-colors"
+        className="flex items-center justify-center w-8 h-8 rounded-xl text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-white/80 dark:hover:bg-gray-700 transition-all duration-300 border border-transparent hover:border-black/5 dark:hover:border-white/10"
         onClick={resetLayout}
         title={t("app_reset_layout")}
       >
-        ↺
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
       </button>
     </div>
   );

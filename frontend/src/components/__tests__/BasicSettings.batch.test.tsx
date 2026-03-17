@@ -30,11 +30,12 @@ function makeFile(name: string, type = "image/png"): File {
   return new File(["dummy"], name, { type });
 }
 
-describe("BasicSettings — batch mode", () => {
+describe("BasicSettings — auto batch mode (unified uploader)", () => {
   beforeEach(() => {
     useConverterStore.setState({
       batchMode: false,
       batchFiles: [],
+      imageFile: null,
       imagePreviewUrl: null,
       lut_name: "",
       lutList: [],
@@ -47,50 +48,44 @@ describe("BasicSettings — batch mode", () => {
     });
   });
 
-  it("renders the batch mode checkbox", () => {
-    render(<BasicSettings />);
-    const checkbox = screen.getByRole("checkbox", { name: "批量模式" });
-    expect(checkbox).toBeInTheDocument();
-  });
-
-  it("shows ImageUpload area when batchMode is false", () => {
-    useConverterStore.setState({ batchMode: false });
-    render(<BasicSettings />);
-    // ImageUpload renders "拖拽图片或点击上传" when no preview
-    expect(screen.getByText("拖拽图片或点击上传")).toBeInTheDocument();
-  });
-
-  it("shows crop checkbox when batchMode is false", () => {
-    useConverterStore.setState({ batchMode: false });
+  it("does NOT render a batch mode checkbox (removed)", () => {
     render(<BasicSettings />);
     expect(
-      screen.getByRole("checkbox", { name: "上传后裁剪" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("checkbox", { name: "批量模式" }),
+    ).not.toBeInTheDocument();
   });
 
-  it("shows BatchFileUploader when batchMode is true", () => {
-    useConverterStore.setState({ batchMode: true, batchFiles: [] });
+  it("shows UnifiedUploader upload hint when no image is selected", () => {
     render(<BasicSettings />);
     expect(
       screen.getByText("拖拽图片或点击上传（支持多选）"),
     ).toBeInTheDocument();
   });
 
-  it("hides ImageUpload when batchMode is true", () => {
-    useConverterStore.setState({ batchMode: true, batchFiles: [] });
+  it("shows crop checkbox in SingleMode (imageFile set, no batchFiles)", () => {
+    useConverterStore.setState({
+      batchMode: false,
+      batchFiles: [],
+      imageFile: makeFile("photo.png"),
+    });
     render(<BasicSettings />);
-    expect(screen.queryByText("拖拽图片或点击上传")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: "上传后裁剪" }),
+    ).toBeInTheDocument();
   });
 
-  it("hides crop checkbox when batchMode is true", () => {
-    useConverterStore.setState({ batchMode: true, batchFiles: [] });
+  it("hides crop checkbox in BatchMode", () => {
+    useConverterStore.setState({
+      batchMode: true,
+      batchFiles: [makeFile("a.png"), makeFile("b.png")],
+    });
     render(<BasicSettings />);
     expect(
       screen.queryByRole("checkbox", { name: "上传后裁剪" }),
     ).not.toBeInTheDocument();
   });
 
-  it("shows batch file list when batchMode is true and files exist", () => {
+  it("shows batch file list when batchFiles exist", () => {
     useConverterStore.setState({
       batchMode: true,
       batchFiles: [makeFile("a.png"), makeFile("b.jpg")],

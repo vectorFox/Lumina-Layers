@@ -333,11 +333,13 @@ export interface ConverterActions {
   autoDetectColors: () => Promise<void>;
 
   // 批量模式
-  setBatchMode: (enabled: boolean) => void;
   addBatchFiles: (files: File[]) => void;
   removeBatchFile: (index: number) => void;
   clearBatchFiles: () => void;
   submitBatch: () => Promise<void>;
+
+  // 统一文件选择（auto-batch-multiselect）
+  handleFilesSelect: (files: File[]) => void;
 
   // 颜色替换预览
   submitReplacePreview: () => Promise<void>;
@@ -1449,14 +1451,6 @@ export const useConverterStore = create<ConverterState & ConverterActions>(
     },
 
     // --- 批量模式 ---
-    setBatchMode: (enabled: boolean) => {
-      if (enabled) {
-        set({ batchMode: true });
-      } else {
-        set({ batchMode: false, batchFiles: [], batchResult: null });
-      }
-    },
-
     addBatchFiles: (files: File[]) => {
       const valid = files.filter((f) => isValidImageType(f.type));
       if (valid.length === 0) return;
@@ -1464,12 +1458,132 @@ export const useConverterStore = create<ConverterState & ConverterActions>(
     },
 
     removeBatchFile: (index: number) => {
-      set((state) => ({
-        batchFiles: state.batchFiles.filter((_, i) => i !== index),
-      }));
+      const state = _get();
+      const remaining = state.batchFiles.filter((_, i) => i !== index);
+
+      if (remaining.length === 1) {
+        // Auto-downgrade: move last file to imageFile, exit BatchMode
+        const lastFile = remaining[0];
+        const previewUrl = URL.createObjectURL(lastFile);
+        const img = new Image();
+        img.onload = () => {
+          set({ aspectRatio: img.naturalWidth / img.naturalHeight });
+        };
+        img.src = previewUrl;
+
+        set({
+          batchFiles: [],
+          imageFile: lastFile,
+          imagePreviewUrl: previewUrl,
+          batchMode: false,
+          hasManualPreview: false,
+        });
+      } else if (remaining.length === 0) {
+        // All files removed: clear all image state
+        const prev = state.imagePreviewUrl;
+        if (prev) URL.revokeObjectURL(prev);
+
+        set({
+          batchFiles: [],
+          imageFile: null,
+          imagePreviewUrl: null,
+          aspectRatio: null,
+          previewImageUrl: null,
+          sessionId: null,
+          previewGlbUrl: null,
+          batchMode: false,
+          hasManualPreview: false,
+        });
+      } else {
+        // Still in BatchMode with multiple files
+        set({ batchFiles: remaining });
+      }
     },
 
     clearBatchFiles: () => set({ batchFiles: [] }),
+
+    handleFilesSelect: (files: File[]) => {
+      // Filter out falsy values and invalid formats
+      const validFiles = files.filter((f) => f && isValidImageType(f.type));
+      if (validFiles.length === 0) return;
+
+      const state = _get();
+      const inBatchMode = state.batchFiles.length > 0;
+
+      // Already in BatchMode → append new files
+      if (inBatchMode) {
+        set({
+          batchFiles: [...state.batchFiles, ...validFiles],
+          batchMode: true,
+        });
+        return;
+      }
+
+      if (validFiles.length === 1) {
+        if (state.imageFile) {
+          // SingleMode: replace imageFile, reset preview state
+          const prev = state.imagePreviewUrl;
+          if (prev) URL.revokeObjectURL(prev);
+
+          const previewUrl = URL.createObjectURL(validFiles[0]);
+          const img = new Image();
+          img.onload = () => {
+            set({ aspectRatio: img.naturalWidth / img.naturalHeight });
+          };
+          img.src = previewUrl;
+
+          set({
+            imageFile: validFiles[0],
+            imagePreviewUrl: previewUrl,
+            previewImageUrl: null,
+            sessionId: null,
+            previewGlbUrl: null,
+            batchMode: false,
+            hasManualPreview: false,
+            cropModalOpen: state.enableCrop,
+          });
+        } else {
+          // Empty state: set imageFile, enter SingleMode
+          const previewUrl = URL.createObjectURL(validFiles[0]);
+          const img = new Image();
+          img.onload = () => {
+            set({ aspectRatio: img.naturalWidth / img.naturalHeight });
+          };
+          img.src = previewUrl;
+
+          set({
+            imageFile: validFiles[0],
+            imagePreviewUrl: previewUrl,
+            batchMode: false,
+            hasManualPreview: false,
+            cropModalOpen: state.enableCrop,
+          });
+        }
+        return;
+      }
+
+      // validFiles.length >= 2: enter BatchMode
+      // Merge existing imageFile (if any) into batchFiles
+      const allFiles = state.imageFile
+        ? [state.imageFile, ...validFiles]
+        : [...validFiles];
+
+      // Revoke previous preview URL
+      const prev = state.imagePreviewUrl;
+      if (prev) URL.revokeObjectURL(prev);
+
+      set({
+        batchFiles: allFiles,
+        imageFile: null,
+        imagePreviewUrl: null,
+        aspectRatio: null,
+        previewImageUrl: null,
+        sessionId: null,
+        previewGlbUrl: null,
+        batchMode: true,
+        hasManualPreview: false,
+      });
+    },
 
     submitBatch: async () => {
       const state = _get();

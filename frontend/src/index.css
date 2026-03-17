@@ -40,3 +40,35 @@ body {
 .dark .dock-scrollbar:hover::-webkit-scrollbar-thumb {
   background-color: rgba(96, 165, 250, 0.5);
 }
+
+@keyframes custom-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes custom-pulse {
+  0% {
+    opacity: 0.1;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 0.25;
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 0.1;
+    transform: scale(0.9);
+  }
+}
+
+.animate-glow-spin {
+  animation: custom-spin 1.5s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+}
+
+.animate-glow-pulse {
+  animation: custom-pulse 3s ease-in-out infinite;
+}

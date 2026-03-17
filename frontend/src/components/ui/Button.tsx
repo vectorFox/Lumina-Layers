@@ -28,25 +28,11 @@ export default function Button({
       className={`flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${variantClasses} disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-none`}
     >
       {loading && (
-        <svg
-          className="h-4 w-4 animate-spin"
-          viewBox="0 0 24 24"
-          fill="none"
-        >
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-          />
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-          />
-        </svg>
+        <div className="relative flex h-4 w-4 items-center justify-center">
+          <div className="absolute inset-[-4px] rounded-full bg-current opacity-20 blur-sm animate-glow-pulse" />
+          <div className="absolute inset-0 rounded-full border border-current opacity-30" />
+          <div className="absolute inset-0 rounded-full border-t-[1.5px] border-r-[1.5px] border-current opacity-90 animate-glow-spin" />
+        </div>
       )}
       {label}
     </button>

@@ -1,12 +1,11 @@
 import { useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { useConverterStore, isValidImageType, ACCEPT_IMAGE_FORMATS } from "../../stores/converterStore";
+import { useConverterStore, ACCEPT_IMAGE_FORMATS } from "../../stores/converterStore";
 import {
   ModelingMode,
   StructureMode,
 } from "../../api/types";
-import ImageUpload from "../ui/ImageUpload";
-import BatchFileUploader from "../ui/BatchFileUploader";
+import UnifiedUploader from "../ui/UnifiedUploader";
 import Checkbox from "../ui/Checkbox";
 import Dropdown from "../ui/Dropdown";
 import Slider from "../ui/Slider";
@@ -29,6 +28,7 @@ export default function BasicSettings() {
   }));
   // 状态字段使用 useShallow 分组提取，避免无关字段变化触发重渲染
   const {
+    imageFile,
     imagePreviewUrl,
     lut_name,
     lutList,
@@ -45,6 +45,7 @@ export default function BasicSettings() {
     batchMode,
     batchFiles,
   } = useConverterStore(useShallow((s) => ({
+    imageFile: s.imageFile,
     imagePreviewUrl: s.imagePreviewUrl,
     lut_name: s.lut_name,
     lutList: s.lutList,
@@ -63,7 +64,7 @@ export default function BasicSettings() {
   })));
 
   // Action 函数单独提取（函数引用稳定，不需要 shallow）
-  const setImageFile = useConverterStore((s) => s.setImageFile);
+  const handleFilesSelect = useConverterStore((s) => s.handleFilesSelect);
   const setLutName = useConverterStore((s) => s.setLutName);
   const setTargetWidthMm = useConverterStore((s) => s.setTargetWidthMm);
   const setTargetHeightMm = useConverterStore((s) => s.setTargetHeightMm);
@@ -73,10 +74,7 @@ export default function BasicSettings() {
   const setEnableCrop = useConverterStore((s) => s.setEnableCrop);
   const setCropModalOpen = useConverterStore((s) => s.setCropModalOpen);
   const submitCrop = useConverterStore((s) => s.submitCrop);
-  const setError = useConverterStore((s) => s.setError);
   const uploadLut = useConverterStore((s) => s.uploadLut);
-  const setBatchMode = useConverterStore((s) => s.setBatchMode);
-  const addBatchFiles = useConverterStore((s) => s.addBatchFiles);
   const removeBatchFile = useConverterStore((s) => s.removeBatchFile);
 
   const lutOptions = lutList.map((name) => ({ label: name, value: name }));
@@ -91,41 +89,23 @@ export default function BasicSettings() {
     if (lutFileRef.current) lutFileRef.current.value = "";
   };
 
-  const handleFileSelect = (file: File) => {
-    if (!isValidImageType(file.type)) {
-      setError(t("basic_image_format_error"));
-      return;
-    }
-    setImageFile(file);
-  };
-
   const handleCropConfirm = (data: CropData) => {
     void submitCrop(data.x, data.y, data.width, data.height);
   };
 
   return (
     <div className="flex flex-col gap-4">
-      <Checkbox
-        label={t("basic_batch_mode")}
-        checked={batchMode}
-        onChange={setBatchMode}
+      <UnifiedUploader
+        singlePreview={imagePreviewUrl ?? undefined}
+        batchFiles={batchFiles}
+        isBatchMode={batchMode}
+        onFilesSelect={handleFilesSelect}
+        onBatchFileRemove={removeBatchFile}
+        accept={ACCEPT_IMAGE_FORMATS}
       />
 
-      {batchMode ? (
-        <BatchFileUploader
-          files={batchFiles}
-          onFilesAdd={addBatchFiles}
-          onFileRemove={removeBatchFile}
-          accept={ACCEPT_IMAGE_FORMATS}
-        />
-      ) : (
+      {batchFiles.length === 0 && imageFile !== null && (
         <>
-          <ImageUpload
-            onFileSelect={handleFileSelect}
-            accept={ACCEPT_IMAGE_FORMATS}
-            preview={imagePreviewUrl ?? undefined}
-          />
-
           <Checkbox
             label={t("basic_crop_after_upload")}
             checked={enableCrop}

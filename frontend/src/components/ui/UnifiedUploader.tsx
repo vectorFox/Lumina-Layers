@@ -1,0 +1,193 @@
+import { useState, useRef, useCallback } from "react";
+import { useI18n } from "../../i18n/context";
+
+interface UnifiedUploaderProps {
+  /** 当前单图模式的预览 URL */
+  singlePreview?: string;
+  /** 批量模式下的文件列表 */
+  batchFiles: File[];
+  /** 是否处于批量模式 */
+  isBatchMode: boolean;
+  /** 处理文件选择（单张或多张） */
+  onFilesSelect: (files: File[]) => void;
+  /** 删除批量文件 */
+  onBatchFileRemove: (index: number) => void;
+  /** 接受的文件格式 */
+  accept: string;
+}
+
+export default function UnifiedUploader({
+  singlePreview,
+  batchFiles,
+  isBatchMode,
+  onFilesSelect,
+  onBatchFileRemove,
+  accept,
+}: UnifiedUploaderProps) {
+  const { t } = useI18n();
+  const [isDragging, setIsDragging] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const addMoreInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragging(false);
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length > 0) {
+        onFilesSelect(files);
+      }
+    },
+    [onFilesSelect],
+  );
+
+  const handleClick = useCallback(() => {
+    inputRef.current?.click();
+  }, []);
+
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files ?? []);
+      if (files.length > 0) {
+        onFilesSelect(files);
+      }
+      e.target.value = "";
+    },
+    [onFilesSelect],
+  );
+
+  const handleAddMoreClick = useCallback(() => {
+    addMoreInputRef.current?.click();
+  }, []);
+
+  const handleAddMoreChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files ?? []);
+      if (files.length > 0) {
+        onFilesSelect(files);
+      }
+      e.target.value = "";
+    },
+    [onFilesSelect],
+  );
+
+  const borderClass = isDragging
+    ? "border-blue-500 bg-blue-500/10"
+    : "border-gray-300 dark:border-gray-600 border-dashed";
+
+  // BatchMode: file list + "add more" area
+  if (isBatchMode && batchFiles.length > 0) {
+    return (
+      <div className="flex flex-col gap-2">
+        {/* File count */}
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {t("upload_file_count").replace("{count}", String(batchFiles.length))}
+        </p>
+
+        {/* File list */}
+        <ul
+          className="flex flex-col gap-1"
+          aria-label={t("upload_file_list_label")}
+        >
+          {batchFiles.map((file, index) => (
+            <li
+              key={`${file.name}-${index}`}
+              className="flex items-center justify-between rounded bg-gray-100 dark:bg-gray-700/50 px-2 py-1 text-sm text-gray-700 dark:text-gray-300"
+            >
+              <span className="truncate mr-2">{file.name}</span>
+              <button
+                type="button"
+                aria-label={t("upload_delete_file").replace("{name}", file.name)}
+                onClick={() => onBatchFileRemove(index)}
+                className="shrink-0 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        {/* Add more area */}
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label={t("upload_add_more")}
+          onClick={handleAddMoreClick}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") handleAddMoreClick();
+          }}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`flex items-center justify-center rounded-md border-2 cursor-pointer transition-colors ${borderClass} min-h-[60px]`}
+        >
+          <input
+            ref={addMoreInputRef}
+            type="file"
+            accept={accept}
+            multiple
+            onChange={handleAddMoreChange}
+            className="hidden"
+            aria-hidden="true"
+          />
+          <span className="text-sm text-gray-500 dark:text-gray-400 select-none">
+            {t("upload_add_more")}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // Empty state or SingleMode: main drop zone
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={t("upload_unified_aria")}
+      onClick={handleClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") handleClick();
+      }}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`flex items-center justify-center rounded-md border-2 cursor-pointer transition-colors ${borderClass} min-h-[120px]`}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        multiple
+        onChange={handleChange}
+        className="hidden"
+        aria-hidden="true"
+      />
+      {singlePreview ? (
+        <div className="rounded p-2 bg-[length:16px_16px] bg-[image:linear-gradient(45deg,_#e0e0e0_25%,_transparent_25%),linear-gradient(-45deg,_#e0e0e0_25%,_transparent_25%),linear-gradient(45deg,_transparent_75%,_#e0e0e0_75%),linear-gradient(-45deg,_transparent_75%,_#e0e0e0_75%)] bg-[position:0_0,0_8px,8px_-8px,-8px_0px]">
+          <img
+            src={singlePreview}
+            alt="preview"
+            className="max-h-[160px] max-w-full rounded object-contain"
+          />
+        </div>
+      ) : (
+        <span className="text-sm text-gray-500 dark:text-gray-400 select-none">
+          {t("upload_unified_hint")}
+        </span>
+      )}
+    </div>
+  );
+}
