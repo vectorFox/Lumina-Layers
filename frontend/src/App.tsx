@@ -52,11 +52,36 @@ class SceneErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryStat
 
 /* ---------- Widget Toggle Buttons ---------- */
 
+import { useRef } from "react";
+
+function useOutsideClick(ref: React.RefObject<HTMLElement | null>, handler: () => void) {
+  useEffect(() => {
+    const listener = (event: MouseEvent | TouchEvent) => {
+      if (!ref.current || ref.current.contains(event.target as Node)) {
+        return;
+      }
+      handler();
+    };
+    document.addEventListener('mousedown', listener);
+    document.addEventListener('touchstart', listener);
+    return () => {
+      document.removeEventListener('mousedown', listener);
+      document.removeEventListener('touchstart', listener);
+    };
+  }, [ref, handler]);
+}
+
+import { AnimatePresence, motion } from "framer-motion";
+
 function WidgetToggles() {
   const { t } = useI18n();
   const toggleVisible = useWidgetStore((s) => s.toggleVisible);
   const resetLayout = useWidgetStore((s) => s.resetLayout);
   const activeTab = useWidgetStore((s) => s.activeTab);
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useOutsideClick(dropdownRef, () => setIsOpen(false));
 
   // Filter to only show widgets belonging to the current TAB page
   const activeWidgetIds = TAB_WIDGET_MAP[activeTab];
@@ -65,48 +90,86 @@ function WidgetToggles() {
   );
   const filteredRegistry = WIDGET_REGISTRY.filter((c) => activeWidgetIds.includes(c.id));
 
-  return (
-    <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-gray-200/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-2xl shadow-[inset_0_1px_4px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_1px_4px_rgba(0,0,0,0.4)] border border-white/40 dark:border-white/5 max-w-2xl">
-      {filteredRegistry.map((config) => {
-        const isActive = visibleWidgetIds.includes(config.id);
-        return (
-          <button
-            key={config.id}
-            data-testid={`widget-toggle-${config.id}`}
-            className={`
-              relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold tracking-wide transition-all duration-300 outline-none
-              ${
-                isActive
-                  ? "bg-white dark:bg-gray-700 text-blue-700 dark:text-blue-400 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)] border border-black/5 dark:border-white/10"
-                  : "bg-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-white/50 dark:hover:bg-gray-700/50 border border-transparent"
-              }
-            `}
-            style={{ WebkitTapHighlightColor: 'transparent' }}
-            onClick={() => toggleVisible(config.id)}
-            title={t(config.titleKey)}
-          >
-            {/* 状态小圆点 */}
-            <span 
-              className={`w-1.5 h-1.5 rounded-full transition-colors duration-300 ${isActive ? 'bg-blue-500 shadow-[0_0_6px_rgba(59,130,246,0.6)]' : 'bg-gray-300 dark:bg-gray-600'}`}
-            />
-            {t(config.titleKey)}
-          </button>
-        );
-      })}
-      
-      {/* 垂直分割线 */}
-      <div className="w-px h-5 bg-gray-300 dark:bg-gray-700 mx-1" />
+  // If there are no widgets for this tab, don't show the button
+  if (filteredRegistry.length === 0) {
+    return null;
+  }
 
+  return (
+    <div className="relative" ref={dropdownRef}>
       <button
-        data-testid="widget-reset-layout"
-        className="flex items-center justify-center w-8 h-8 rounded-xl text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-white/80 dark:hover:bg-gray-700 transition-all duration-300 border border-transparent hover:border-black/5 dark:hover:border-white/10"
-        onClick={resetLayout}
-        title={t("app_reset_layout")}
+        data-testid="panel-controls-toggle"
+        className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold transition-all duration-300 rounded-xl outline-none
+          ${isOpen ? 'bg-blue-600 shadow-[0_4px_12px_rgba(37,99,235,0.4)] text-white' : 'bg-gray-200/60 dark:bg-gray-800/60 text-gray-700 dark:text-gray-200 hover:bg-white/80 dark:hover:bg-gray-700/80 shadow-[inset_0_1px_4px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_1px_4px_rgba(0,0,0,0.4)] backdrop-blur-xl border border-white/40 dark:border-white/5'}
+        `}
+        style={{ WebkitTapHighlightColor: 'transparent' }}
+        onClick={() => setIsOpen(!isOpen)}
+        title={t("app_panel_controls")}
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+        </svg>
+        <span className="hidden sm:inline">{t("app_panel_controls")}</span>
+        <svg
+          className={`w-4 h-4 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -10, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.95 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="absolute right-0 top-full mt-2 w-56 z-50 p-2 flex flex-col gap-1 rounded-2xl bg-white/90 dark:bg-gray-800/90 backdrop-blur-xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 overflow-hidden origin-top-right"
+          >
+            {filteredRegistry.map((config) => {
+              const isActive = visibleWidgetIds.includes(config.id);
+              return (
+                <button
+                  key={config.id}
+                  data-testid={`widget-toggle-${config.id}`}
+                  className={`
+                    flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold tracking-wide transition-all duration-200 outline-none
+                    ${
+                      isActive
+                        ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
+                        : "bg-transparent text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100/80 dark:hover:bg-gray-700/50"
+                    }
+                  `}
+                  onClick={() => toggleVisible(config.id)}
+                >
+                  <span 
+                    className={`w-2 h-2 rounded-full transition-colors duration-300 ${isActive ? 'bg-blue-500 shadow-[0_0_6px_rgba(59,130,246,0.6)]' : 'bg-gray-300 dark:bg-gray-600'}`}
+                  />
+                  {t(config.titleKey)}
+                </button>
+              );
+            })}
+            
+            <div className="h-px bg-gray-200 dark:bg-gray-700/80 my-1 mx-2" />
+
+            <button
+              data-testid="widget-reset-layout"
+              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold tracking-wide transition-all duration-200 outline-none
+                bg-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100/80 dark:hover:bg-gray-700/50"
+              onClick={() => {
+                resetLayout();
+                setIsOpen(false);
+              }}
+            >
+              <svg className="w-4 h-4 ml-0.5 text-gray-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              {t("app_reset_layout")}
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -153,20 +216,26 @@ function AppContent() {
 
   return (
     <div className="h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-white flex flex-col overflow-hidden">
-      <header className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
-        <h1 className="text-xl font-semibold tracking-tight">
-          {t("app_header_title")}
-        </h1>
+      <header className="relative flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 z-50">
+        <div className="flex-1 flex justify-start items-center gap-3">
+          <img src="/favicon.ico" alt="Lumina Studio Logo" className="w-8 h-8 rounded" />
+          <h1 className="text-xl font-semibold tracking-tight whitespace-nowrap hidden sm:block">
+            {t("app_header_title")}
+          </h1>
+        </div>
 
-        <TabNavBar
-          activeTab={activeTab}
-          modalTab={modalTab}
-          onTabChange={handleTabChange}
-        />
+        {/* Center: Tabs */}
+        <div className="absolute left-1/2 -translate-x-1/2 flex justify-center z-10 w-[max-content]">
+          <TabNavBar
+            activeTab={activeTab}
+            modalTab={modalTab}
+            onTabChange={handleTabChange}
+          />
+        </div>
 
-        <WidgetToggles />
-
-        <div className="flex items-center gap-2">
+        {/* Right Side: Controls */}
+        <div className="flex-1 flex justify-end items-center gap-2 relative z-20">
+          <WidgetToggles />
           <LanguageToggle />
           <ThemeToggle />
           {connected === null ? (

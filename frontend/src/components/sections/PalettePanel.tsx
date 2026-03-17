@@ -46,7 +46,7 @@ function PaletteItem({
       <div
         role="button"
         tabIndex={0}
-        aria-label={`${t("lut_grid_color_label").replace("{hex}", entry.matched_hex)}，${entry.percentage.toFixed(1)}%${isRemapped ? `，${t("palette_replaced").replace("{hex}", `#${remappedHex}`)}` : ""}`}
+        aria-label={`${t("lut_grid_color_label").replace("{hex}", entry.matched_hex)}，${entry.percentage.toFixed(1)}%${isRemapped ? `，${t("palette_replaced_label").replace("{hex}", `#${remappedHex}`)}` : ""}`}
         aria-pressed={isSelected}
         onClick={onSelect}
         onKeyDown={(e) => {
@@ -79,7 +79,7 @@ function PaletteItem({
     <div
       role="button"
       tabIndex={0}
-      aria-label={`${t("lut_grid_color_label").replace("{hex}", entry.matched_hex)}，${entry.percentage.toFixed(1)}%${isRemapped ? `，${t("palette_replaced").replace("{hex}", `#${remappedHex}`)}` : ""}`}
+      aria-label={`${t("lut_grid_color_label").replace("{hex}", entry.matched_hex)}，${entry.percentage.toFixed(1)}%${isRemapped ? `，${t("palette_replaced_label").replace("{hex}", `#${remappedHex}`)}` : ""}`}
       aria-pressed={isSelected}
       onClick={onSelect}
       onKeyDown={(e) => {
@@ -157,7 +157,7 @@ function SelectedColorDetail({ entry, remappedHex }: SelectedColorDetailProps) {
     <div className="flex gap-4 items-start py-2 px-3 bg-gray-800/40 rounded-lg mb-2">
       <ColorBlock label={t("palette_quantized")} hex={entry.quantized_hex} />
       <ColorBlock label={t("palette_matched")} hex={entry.matched_hex} />
-      {remappedHex && <ColorBlock label={t("palette_replaced")} hex={remappedHex} />}
+      {remappedHex && <ColorBlock label={t("palette_replaced_label")} hex={remappedHex} />}
     </div>
   );
 }

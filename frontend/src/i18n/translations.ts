@@ -13,6 +13,10 @@ export const translations: Record<string, Record<"zh" | "en", string>> = {
     zh: "多材料3D打印色彩系统 | v1.6.3",
     en: "Multi-Material 3D Print Color System | v1.6.3",
   },
+  app_panel_controls: {
+    zh: "面板控件",
+    en: "Panel Controls",
+  },
   lang_btn_zh: {
     zh: "🌐 中文",
     en: "🌐 中文",
@@ -1377,7 +1381,7 @@ export const translations: Record<string, Record<"zh" | "en", string>> = {
     zh: "底板颜色",
     en: "Backing Color",
   },
-  cal_generate_btn: {
+  cal_generate_btn_panel: {
     zh: "生成校准板",
     en: "Generate Calibration",
   },
@@ -1805,7 +1809,7 @@ export const translations: Record<string, Record<"zh" | "en", string>> = {
     zh: "匹配色",
     en: "Matched",
   },
-  palette_replaced: {
+  palette_replaced_label: {
     zh: "替换色",
     en: "Replaced",
   },

@@ -105,7 +105,7 @@ export default function UnifiedUploader({
           {batchFiles.map((file, index) => (
             <li
               key={`${file.name}-${index}`}
-              className="flex items-center justify-between rounded bg-gray-100 dark:bg-gray-700/50 px-2 py-1 text-sm text-gray-700 dark:text-gray-300"
+              className="flex items-center justify-between rounded bg-gray-100 dark:bg-gray-800 px-2 py-1 text-sm text-gray-700 dark:text-gray-200 border border-transparent dark:border-gray-700"
             >
               <span className="truncate mr-2">{file.name}</span>
               <button
@@ -176,7 +176,7 @@ export default function UnifiedUploader({
         aria-hidden="true"
       />
       {singlePreview ? (
-        <div className="rounded p-2 bg-[length:16px_16px] bg-[image:linear-gradient(45deg,_#e0e0e0_25%,_transparent_25%),linear-gradient(-45deg,_#e0e0e0_25%,_transparent_25%),linear-gradient(45deg,_transparent_75%,_#e0e0e0_75%),linear-gradient(-45deg,_transparent_75%,_#e0e0e0_75%)] bg-[position:0_0,0_8px,8px_-8px,-8px_0px]">
+        <div className="rounded p-2 bg-[length:16px_16px] bg-[image:linear-gradient(45deg,_#e0e0e0_25%,_transparent_25%),linear-gradient(-45deg,_#e0e0e0_25%,_transparent_25%),linear-gradient(45deg,_transparent_75%,_#e0e0e0_75%),linear-gradient(-45deg,_transparent_75%,_#e0e0e0_75%)] dark:bg-[image:linear-gradient(45deg,_#374151_25%,_transparent_25%),linear-gradient(-45deg,_#374151_25%,_transparent_25%),linear-gradient(45deg,_transparent_75%,_#374151_75%),linear-gradient(-45deg,_transparent_75%,_#374151_75%)] bg-[position:0_0,0_8px,8px_-8px,-8px_0px]">
           <img
             src={singlePreview}
             alt="preview"

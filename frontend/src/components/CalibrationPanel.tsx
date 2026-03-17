@@ -84,7 +84,7 @@ export default function CalibrationPanel() {
       />
 
       <Button
-        label={t("cal_generate_btn")}
+        label={t("cal_generate_btn_panel")}
         variant="primary"
         onClick={() => void submitGenerate()}
         disabled={isLoading}
