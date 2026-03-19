@@ -435,6 +435,56 @@ def get_tray_runtime_policy():
 from dataclasses import dataclass, field
 from typing import Optional
 
+LEGACY_SLICER_ID_ALIASES: dict[str, str] = {
+    "bambu": "BambuStudio",
+    "bambu_studio": "BambuStudio",
+    "bambu studio": "BambuStudio",
+    "bambustudio": "BambuStudio",
+    "orca": "OrcaSlicer",
+    "orca_slicer": "OrcaSlicer",
+    "orcaslicer": "OrcaSlicer",
+    "snapmaker": "SnapmakerOrca",
+    "snapmaker_orca": "SnapmakerOrca",
+    "snapmaker orca": "SnapmakerOrca",
+    "snapmakerorca": "SnapmakerOrca",
+    "elegoo": "ElegooSlicer",
+    "elegoo_slicer": "ElegooSlicer",
+    "elegoo slicer": "ElegooSlicer",
+    "elegooslicer": "ElegooSlicer",
+}
+
+
+def normalize_slicer_software_id(slicer: str) -> str:
+    """Normalize legacy slicer IDs to canonical settings IDs.
+    将旧版切片器 ID 规范化为当前设置使用的标准 ID。
+
+    Args:
+        slicer (str): Raw slicer identifier or display-like value. (原始切片器标识)
+
+    Returns:
+        str: Canonical slicer ID when known, otherwise the trimmed input. (标准切片器 ID)
+    """
+    trimmed = slicer.strip()
+    if not trimmed:
+        return DEFAULT_SLICER_ID
+    return LEGACY_SLICER_ID_ALIASES.get(trimmed.lower(), trimmed)
+
+
+def normalize_printer_profile_id(printer_id: str) -> str:
+    """Normalize legacy printer IDs to canonical registry IDs.
+    将旧版打印机 ID 规范化为当前注册表使用的标准 ID。
+
+    Args:
+        printer_id (str): Raw printer identifier. (原始打印机标识)
+
+    Returns:
+        str: Canonical printer ID when known, otherwise normalized text. (标准打印机 ID)
+    """
+    trimmed = printer_id.strip()
+    if not trimmed:
+        return DEFAULT_PRINTER_ID
+    return trimmed.lower().replace("_", "-")
+
 
 @dataclass
 class PrinterProfile:
@@ -476,7 +526,8 @@ class PrinterProfile:
         Returns:
             str: Template filename. Falls back to default template_file. (模板文件名，回退到默认)
         """
-        return self.slicer_templates.get(slicer, self.template_file)
+        normalized_slicer = normalize_slicer_software_id(slicer)
+        return self.slicer_templates.get(normalized_slicer, self.template_file)
 
 
 # Supported slicer software list
@@ -597,7 +648,11 @@ def get_printer_profile(printer_id: str) -> PrinterProfile:
     Returns:
         PrinterProfile: Matching profile or default H2D profile. (匹配的配置或默认 H2D 配置)
     """
-    return PRINTER_PROFILES.get(printer_id, PRINTER_PROFILES[DEFAULT_PRINTER_ID])
+    normalized_printer_id = normalize_printer_profile_id(printer_id)
+    return PRINTER_PROFILES.get(
+        normalized_printer_id,
+        PRINTER_PROFILES[DEFAULT_PRINTER_ID],
+    )
 
 
 def list_printer_profiles() -> list[PrinterProfile]:

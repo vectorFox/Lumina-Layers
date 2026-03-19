@@ -14,6 +14,8 @@ from config import (
     DEFAULT_PRINTER_ID,
     get_printer_profile,
     list_printer_profiles,
+    normalize_printer_profile_id,
+    normalize_slicer_software_id,
 )
 from utils.bambu_3mf_writer import load_printer_template, _PRINTER_TEMPLATE_CACHE
 
@@ -73,6 +75,20 @@ class TestGetPrinterProfile:
         assert profile.nozzle_count == 1
         assert profile.is_dual_head is False
 
+    def test_legacy_underscore_id_is_normalized(self) -> None:
+        profile = get_printer_profile("bambu_h2d")
+        assert profile.id == "bambu-h2d"
+
+
+class TestNormalizeSettingsIdentifiers:
+    """Legacy settings IDs are normalized to canonical values."""
+
+    def test_normalize_printer_profile_id(self) -> None:
+        assert normalize_printer_profile_id("BAMBU_H2D") == "bambu-h2d"
+
+    def test_normalize_slicer_software_id(self) -> None:
+        assert normalize_slicer_software_id("orca_slicer") == "OrcaSlicer"
+
 
 class TestProfileRequiredFields:
     """Every profile has all required fields."""
@@ -97,6 +113,10 @@ class TestLoadPrinterTemplate:
         template = load_printer_template("bambu-a1-mini")
         assert isinstance(template, dict)
         assert len(template) > 0
+
+    def test_legacy_slicer_id_resolves_orca_template(self) -> None:
+        profile = get_printer_profile("bambu-h2d")
+        assert profile.get_template_file("orca_slicer") == "orca_h2d.json"
 
 
 # ====================================================================
