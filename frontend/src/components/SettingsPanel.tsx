@@ -14,8 +14,12 @@ import {
   resolvePrinterOptionId,
   resolveSlicerOptionId,
 } from "../utils/settingsOptionIds";
+import { retryAsync } from "../utils/retryAsync";
 import Button from "./ui/Button";
 import { PanelIntro, StatusBanner, centeredPanelClass, sectionCardClass } from "./ui/panelPrimitives";
+
+const SETTINGS_OPTIONS_RETRY_ATTEMPTS = 6;
+const SETTINGS_OPTIONS_RETRY_DELAY_MS = 1000;
 
 export default function SettingsPanel() {
   const { t } = useI18n();
@@ -44,22 +48,35 @@ export default function SettingsPanel() {
     let cancelled = false;
     setPrintersLoading(true);
     setSlicersLoading(true);
-    getPrinters()
+
+    void retryAsync(getPrinters, {
+      attempts: SETTINGS_OPTIONS_RETRY_ATTEMPTS,
+      delayMs: SETTINGS_OPTIONS_RETRY_DELAY_MS,
+    })
       .then((list) => {
         if (!cancelled) setPrinters(list);
       })
-      .catch(() => {})
+      .catch((error) => {
+        console.warn("[SettingsPanel] Failed to load printer options", error);
+      })
       .finally(() => {
         if (!cancelled) setPrintersLoading(false);
       });
-    getSlicers()
+
+    void retryAsync(getSlicers, {
+      attempts: SETTINGS_OPTIONS_RETRY_ATTEMPTS,
+      delayMs: SETTINGS_OPTIONS_RETRY_DELAY_MS,
+    })
       .then((list) => {
         if (!cancelled) setSlicers(list);
       })
-      .catch(() => {})
+      .catch((error) => {
+        console.warn("[SettingsPanel] Failed to load slicer options", error);
+      })
       .finally(() => {
         if (!cancelled) setSlicersLoading(false);
       });
+
     return () => { cancelled = true; };
   }, []);
 
