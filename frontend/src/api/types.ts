@@ -171,6 +171,7 @@ export interface BedSizeItem {
   width_mm: number;
   height_mm: number;
   is_default: boolean;
+  printer_id?: string | null;
 }
 
 export interface BedSizeListResponse {
