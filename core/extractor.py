@@ -132,7 +132,6 @@ def _generate_recipes(color_mode: str, total_cells: int, page_choice: str = "Pag
             return np.zeros((total_cells, 5), dtype=np.int32)
 
     if "6-Color" in color_mode:
-        # Use get_top_1296_colors() from calibration module
         try:
             if "RYBW" in color_mode:
                 from core.calibration import get_top_1296_colors_rybw
@@ -243,12 +242,20 @@ def draw_corner_points(img, points, color_mode: str, page_choice: str | None = N
             (0, 255, 255),  # Yellow (BL)
         ]
     elif "6-Color" in color_mode:
-        draw_colors = [
-            (255, 255, 255),  # White
-            (214, 134, 0),  # Cyan (BGR)
-            (140, 0, 236),  # Magenta (BGR)
-            (42, 238, 244),  # Yellow (BGR)
-        ]
+        if "RYBW" in color_mode:
+            draw_colors = [
+                (255, 255, 255),  # White
+                (60, 20, 220),  # Red (BGR)
+                (240, 100, 0),  # Blue (BGR)
+                (0, 230, 255),  # Yellow (BGR)
+            ]
+        else:
+            draw_colors = [
+                (255, 255, 255),  # White
+                (214, 134, 0),  # Cyan (BGR)
+                (140, 0, 236),  # Magenta (BGR)
+                (42, 238, 244),  # Yellow (BGR)
+            ]
     elif "5-Color Extended" in color_mode:
         if page_choice is not None and "2" in str(page_choice):
             labels = ["蓝色 (左上)", "红色 (右上)", "黑色 (右下)", "黄色 (左下)"]
