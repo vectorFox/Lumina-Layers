@@ -1225,21 +1225,15 @@ export const useConverterStore = create<ConverterState & ConverterActions>(
       try {
         const response = await apiFetchBedSizes();
         const beds = response.beds;
-        
-        // 获取当前状态
-        const state = useConverterStore.getState();
-        const currentBedLabel = state.bed_label;
+
         const settingsPrinterModel = useSettingsStore.getState().printerModel;
-        
-        // 查找当前设置的打印机型号对应的热床选项
-        const printerBed = beds.find(bed => bed.printer_id === settingsPrinterModel);
-        
-        // 如果找到了对应的打印机型号，且当前是默认值，则自动选中
-        if (printerBed && currentBedLabel === "256×256 mm") {
-          set({ bedSizes: beds, bedSizesLoading: false, bed_label: printerBed.label });
-        } else {
-          set({ bedSizes: beds, bedSizesLoading: false });
-        }
+        const printerBed = beds.find((bed) => bed.printer_id === settingsPrinterModel);
+
+        set({
+          bedSizes: beds,
+          bedSizesLoading: false,
+          ...(printerBed ? { bed_label: printerBed.label } : {}),
+        });
       } catch (err) {
         set({
           bedSizesLoading: false,

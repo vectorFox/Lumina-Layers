@@ -72,7 +72,7 @@ class WorkerPoolConfig:
         TASK_TIMEOUT (float): Task timeout in seconds. (任务超时秒数)
     """
     MAX_WORKERS: int = min(os.cpu_count() or 2, 4)
-    TASK_TIMEOUT: float = 300.0  # seconds
+    TASK_TIMEOUT: float = 0  # No timeout
 
     @classmethod
     def from_env(cls) -> "WorkerPoolConfig":
