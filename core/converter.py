@@ -901,7 +901,7 @@ def detect_lut_color_mode(lut_path):
         lut_path: LUT文件路径
     
     Returns:
-        str: 颜色模式 ("BW (Black & White)", "Merged", "6-Color (Smart 1296)", "8-Color Max", etc.)
+        str: 颜色模式 ("BW (Black & White)", "Merged", "6-Color (CMYWGK 1296)", "8-Color Max", etc.)
     """
     if not lut_path or not os.path.exists(lut_path):
         return None
@@ -923,7 +923,7 @@ def detect_lut_color_mode(lut_path):
                     return "8-Color Max"
                 if total_colors >= 1200 and total_colors < 1400:
                     print(f"[AUTO_DETECT] Detected 6-Color mode from .npz ({total_colors} colors)")
-                    return "6-Color (Smart 1296)"
+                    return "6-Color (CMYWGK 1296)"
                 if total_colors >= 900 and total_colors < 1200:
                     print(f"[AUTO_DETECT] Detected 4-Color mode from .npz ({total_colors} colors)")
                     return "4-Color"
@@ -954,7 +954,7 @@ def detect_lut_color_mode(lut_path):
                 return "8-Color Max"
             if total_colors >= 1200 and total_colors < 1400:
                 print(f"[AUTO_DETECT] Detected 6-Color mode from .json ({total_colors} colors)")
-                return "6-Color (Smart 1296)"
+                return "6-Color (CMYWGK 1296)"
             if total_colors >= 900 and total_colors < 1200:
                 print(f"[AUTO_DETECT] Detected 4-Color mode from .json ({total_colors} colors)")
                 return "4-Color"
@@ -1002,7 +1002,7 @@ def detect_lut_color_mode(lut_path):
         # 6色模式：1200-1400色
         elif total_colors >= 1200 and total_colors < 1400:
             print(f"[AUTO_DETECT] Detected 6-Color mode ({total_colors} colors)")
-            return "6-Color (Smart 1296)"
+            return "6-Color (CMYWGK 1296)"
         
         # 4色模式：900-1200色
         elif total_colors >= 900 and total_colors < 1200:

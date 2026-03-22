@@ -32,8 +32,10 @@ class CalibrationColorMode(str, Enum):
             4 色 RYBW 模式 (1024 色)。
         FIVE_COLOR_EXT: 5-Color Extended mode (1444 colors).
             5 色扩展模式 (1444 色)。
-        SIX_COLOR: 6-Color extended smart mode (1296 colors).
-            6 色扩展智能模式 (1296 色)。
+        SIX_COLOR: 6-Color CMYWGK mode (1296 colors).
+            6 色 CMYWGK 模式 (1296 色)。
+        SIX_COLOR_RYBW: 6-Color RYBWGK mode (1296 colors).
+            6 色 RYBWGK 模式 (1296 色)。
         EIGHT_COLOR: 8-Color professional mode (2738 colors).
             8 色专业模式 (2738 色)。
     """
@@ -42,8 +44,8 @@ class CalibrationColorMode(str, Enum):
     FOUR_COLOR_CMYW = "4-Color (CMYW)"
     FOUR_COLOR_RYBW = "4-Color (RYBW)"
     FIVE_COLOR_EXT = "5-Color Extended (1444)"
-    SIX_COLOR = "6-Color (Smart 1296)"
-    SIX_COLOR_RYBW = "6-Color (RYBW 1296)"
+    SIX_COLOR = "6-Color (CMYWGK 1296)"
+    SIX_COLOR_RYBW = "6-Color (RYBWGK 1296)"
     EIGHT_COLOR = "8-Color Max"
 
 

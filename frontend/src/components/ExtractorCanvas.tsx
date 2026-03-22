@@ -26,13 +26,13 @@ export const CORNER_LABELS: Record<string, string[]> = {
     "右下 / BR",
     "左下 / BL",
   ],
-  "6-Color (Smart 1296)": [
+  "6-Color (CMYWGK 1296)": [
     "白色 (左上) / White (TL)",
     "青色 (右上) / Cyan (TR)",
     "品红 (右下) / Magenta (BR)",
     "黄色 (左下) / Yellow (BL)",
   ],
-  "6-Color (RYBW 1296)": [
+  "6-Color (RYBWGK 1296)": [
     "白色 (左上) / White (TL)",
     "红色 (右上) / Red (TR)",
     "蓝色 (右下) / Blue (BR)",
