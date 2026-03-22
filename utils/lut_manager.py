@@ -163,8 +163,8 @@ class LUTManager:
 
         if base_mode == "6-Color":
             if rybw_indicators & color_names:
-                return "6-Color (RYBW 1296)"
-            return "6-Color (Smart 1296)"  # default fallback
+                return "6-Color (RYBWGK 1296)"
+            return "6-Color (CMYWGK 1296)"  # default fallback
 
         return f"{base_mode}"
 
@@ -260,8 +260,8 @@ class LUTManager:
             return "8-Color Max"
         if "6色" in combined or "6-COLOR" in combined or "6COLOR" in combined:
             if "RYBW" in combined or "红黄蓝" in combined:
-                return "6-Color (RYBW 1296)"
-            return "6-Color (Smart 1296)"
+                return "6-Color (RYBWGK 1296)"
+            return "6-Color (CMYWGK 1296)"
         # 5-Color Extended 必须在 4-Color 之前检测
         if "5色" in combined or "5-COLOR" in combined or "5COLOR" in combined:
             return "5-Color Extended"

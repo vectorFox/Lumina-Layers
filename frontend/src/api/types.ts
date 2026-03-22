@@ -11,8 +11,8 @@ export enum ColorMode {
   FOUR_COLOR_CMYW = "4-Color (CMYW)",
   FOUR_COLOR_RYBW = "4-Color (RYBW)",
   FIVE_COLOR_EXT = "5-Color Extended",
-  SIX_COLOR = "6-Color (Smart 1296)",
-  SIX_COLOR_RYBW = "6-Color (RYBW 1296)",
+  SIX_COLOR = "6-Color (CMYWGK 1296)",
+  SIX_COLOR_RYBW = "6-Color (RYBWGK 1296)",
   EIGHT_COLOR = "8-Color Max",
   MERGED = "Merged",
 }
@@ -185,8 +185,8 @@ export enum CalibrationColorMode {
   FOUR_COLOR_CMYW = "4-Color (CMYW)",
   FOUR_COLOR_RYBW = "4-Color (RYBW)",
   FIVE_COLOR_EXT = "5-Color Extended (1444)",
-  SIX_COLOR = "6-Color (Smart 1296)",
-  SIX_COLOR_RYBW = "6-Color (RYBW 1296)",
+  SIX_COLOR = "6-Color (CMYWGK 1296)",
+  SIX_COLOR_RYBW = "6-Color (RYBWGK 1296)",
   EIGHT_COLOR = "8-Color Max",
 }
 
@@ -224,8 +224,8 @@ export enum ExtractorColorMode {
   FOUR_COLOR_CMYW = "4-Color (CMYW)",
   FOUR_COLOR_RYBW = "4-Color (RYBW)",
   FIVE_COLOR_EXT = "5-Color Extended",
-  SIX_COLOR = "6-Color (Smart 1296)",
-  SIX_COLOR_RYBW = "6-Color (RYBW 1296)",
+  SIX_COLOR = "6-Color (CMYWGK 1296)",
+  SIX_COLOR_RYBW = "6-Color (RYBWGK 1296)",
   EIGHT_COLOR = "8-Color Max",
 }
 

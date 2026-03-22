@@ -286,7 +286,7 @@ class ColorSystem:
         # Check specific patterns
         if "8-Color" in mode:
             return ColorSystem.EIGHT_COLOR
-        if mode in ("6-Color (RYBW 1296)",):
+        if mode in ("6-Color (RYBWGK 1296)",):
             return ColorSystem.SIX_COLOR_RYBW
         if "6-Color" in mode:
             return ColorSystem.SIX_COLOR
