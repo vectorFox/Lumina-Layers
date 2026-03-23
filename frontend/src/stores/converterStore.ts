@@ -1804,10 +1804,14 @@ export const useConverterStore = create<ConverterState & ConverterActions>(
           `#${origHex}`,
           `#${newHex}`,
         );
-        set({
+        const updates: Record<string, unknown> = {
           replacePreviewLoading: false,
           previewImageUrl: `http://localhost:8000${response.preview_url}`,
-        });
+        };
+        if (response.preview_3d_url) {
+          updates.previewGlbUrl = `http://localhost:8000${response.preview_3d_url}`;
+        }
+        set(updates as any);
       } catch (err) {
         // 回滚 colorRemapMap 到操作前状态
         const currentHistory = _get().remapHistory;
@@ -1837,6 +1841,7 @@ export const useConverterStore = create<ConverterState & ConverterActions>(
       set({ replacePreviewLoading: true, error: null });
       try {
         let lastPreviewUrl = state.previewImageUrl;
+        let lastGlbUrl: string | null = null;
         for (const [origHex, newHex] of entries) {
           // 查找 palette 中对应的 matched_hex 作为 selected_color
           const paletteEntry = state.palette.find(
@@ -1851,11 +1856,18 @@ export const useConverterStore = create<ConverterState & ConverterActions>(
             replacementColor,
           );
           lastPreviewUrl = `http://localhost:8000${response.preview_url}`;
+          if (response.preview_3d_url) {
+            lastGlbUrl = `http://localhost:8000${response.preview_3d_url}`;
+          }
         }
-        set({
+        const updates: Record<string, unknown> = {
           replacePreviewLoading: false,
           previewImageUrl: lastPreviewUrl,
-        });
+        };
+        if (lastGlbUrl) {
+          updates.previewGlbUrl = lastGlbUrl;
+        }
+        set(updates as any);
       } catch (err) {
         set({
           replacePreviewLoading: false,
