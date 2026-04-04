@@ -218,6 +218,16 @@ def get_platform_head_js() -> str:
 })();
 </script>
 """
+
+def get_server_host() -> str:
+    """Return the Gradio bind host.
+
+    Defaults to IPv4 loopback because Gradio's macOS localhost startup check
+    can resolve to IPv6 (::1), while 0.0.0.0 binds all IPv4 interfaces but
+    does not cover IPv6. Override with LUMINA_HOST for LAN / container access.
+    """
+    return os.environ.get("LUMINA_HOST", "127.0.0.1").strip() or "127.0.0.1"
+
 def _graceful_shutdown(signum, frame):
     """Handle SIGTERM/SIGINT for clean container shutdown.
     处理 SIGTERM/SIGINT 信号，实现容器优雅退出。
@@ -250,7 +260,8 @@ if __name__ == "__main__":
             print(f"[TRAY] {TRAY_POLICY_REASON}")
 
         threading.Thread(target=start_browser, args=(PORT,), daemon=True).start()
-        print(f"✨ Lumina Studio is running on http://127.0.0.1:{PORT}")
+        server_host = get_server_host()
+        print(f"✨ Lumina Studio is running on http://127.0.0.1:{PORT}  (bind: {server_host})")
         app = create_app()
 
         try:
@@ -270,7 +281,7 @@ if __name__ == "__main__":
             
             app.launch(
                 inbrowser=False,
-                server_name="0.0.0.0",
+                server_name=server_host,
                 server_port=PORT,
                 show_error=True,
                 prevent_thread_lock=True,
