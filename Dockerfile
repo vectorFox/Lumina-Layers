@@ -1,35 +1,33 @@
-# Use an official Python runtime as a parent image
-FROM python:3.13-slim
+FROM m.daocloud.io/docker.io/library/python:3.13-slim
 
-# Set the working directory in the container
 WORKDIR /app
 
-# Install system dependencies required for pycairo and opencv
-# libcairo2-dev, pkg-config -> for pycairo
-# libgl1, libglib2.0-0 -> for opencv-python
-RUN apt-get update && apt-get install -y \
+COPY requirements.txt /app/
+
+RUN sed -i 's|http://deb.debian.org/debian|https://mirrors.tuna.tsinghua.edu.cn/debian|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true && \
+    sed -i 's|http://deb.debian.org/debian|https://mirrors.tuna.tsinghua.edu.cn/debian|g' /etc/apt/sources.list 2>/dev/null || true && \
+    echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     gcc \
     pkg-config \
     libcairo2-dev \
     libgl1 \
     libglib2.0-0 \
+    && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the requirements file into the container at /app
-COPY requirements.txt /app/
+RUN mkdir -p /root/.pip && \
+    printf "[global]\nindex-url = https://pypi.tuna.tsinghua.edu.cn/simple\ntrusted-host = pypi.tuna.tsinghua.edu.cn\ndefault-timeout = 120\n" > /root/.pip/pip.conf
 
-# Install any needed packages specified in requirements.txt
+RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code
 COPY . /app/
 
-# Expose the port Gradio runs on
 EXPOSE 7860
 
-# Define environment variable to ensure output is flushed
 ENV PYTHONUNBUFFERED=1
 ENV LUMINA_HOST=0.0.0.0
 
-# Run the application
 CMD ["python", "main.py"]
